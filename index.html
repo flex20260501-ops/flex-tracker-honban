@@ -5257,6 +5257,7 @@ function renderDailyReportInput() {
   // 当月の日報データを全日付分集計（日報入力済み + 週次入力も加算）
   const cumData = {};
   members.forEach(m => { cumData[m.id] = {hours:0,call:0,connect:0,pass:0,maekaku_ok:0,goukaku_ok:0,dentou_plan:0,douryoku:0,seiyaku:0,seiyaku_dentou:0,seiyaku_douryoku:0,meisai_kaishuu:0}; });
+  const pf = v => parseFloat(v) || 0; // 文字列も確実に数値変換
 
   // 日報入力データ
   for (const [key, rep] of Object.entries(state.dailyReports || {})) {
@@ -5266,34 +5267,33 @@ function renderDailyReportInput() {
     const dYear  = parseInt(d.split('-')[0]);
     if (dYear !== year || dMonth !== month) continue;
     const c = cumData[mId];
-    c.hours   += rep.hours   || 0;
-    c.call    += rep.call    || 0;
-    c.connect += rep.connect || 0;
-    c.pass    += rep.pass    || 0;
-    c.maekaku_ok  += rep.maekaku_ok  || 0;
-    c.goukaku_ok  += rep.goukaku_ok  || 0;
-    c.dentou_plan += rep.dentou_plan || 0;
-    c.douryoku    += rep.douryoku    || 0;
-    c.seiyaku     += rep.seiyaku     || 0;
-    c.seiyaku_dentou  += rep.seiyaku_dentou  || 0;
-    c.seiyaku_douryoku+= rep.seiyaku_douryoku|| 0;
-    c.meisai_kaishuu  += rep.meisai_kaishuu  || 0;
+    c.hours   += pf(rep.hours);
+    c.call    += pf(rep.call);
+    c.connect += pf(rep.connect);
+    c.pass    += pf(rep.pass);
+    c.maekaku_ok  += pf(rep.maekaku_ok);
+    c.goukaku_ok  += pf(rep.goukaku_ok);
+    c.dentou_plan += pf(rep.dentou_plan);
+    c.douryoku    += pf(rep.douryoku);
+    c.seiyaku     += pf(rep.seiyaku);
+    c.seiyaku_dentou  += pf(rep.seiyaku_dentou);
+    c.seiyaku_douryoku+= pf(rep.seiyaku_douryoku);
+    c.meisai_kaishuu  += pf(rep.meisai_kaishuu);
   }
 
-  // 週次入力データも加算（コール・コネクト・稼働時間は週次が正本）
+  // 週次入力データも加算
   for (const [key, entry] of Object.entries(state.entries || {})) {
     const [mId, d] = key.split('|');
     if (!cumData[mId]) continue;
     const dMonth = parseInt(d.split('-')[1]);
     const dYear  = parseInt(d.split('-')[0]);
     if (dYear !== year || dMonth !== month) continue;
-    // 日報入力と重複しないようにdailyReportsにない日のみ加算
     if (state.dailyReports && state.dailyReports[key]) continue;
     const c = cumData[mId];
-    c.hours   += entry.hours   || 0;
-    c.call    += entry.call    || 0;
-    c.connect += entry.connect || 0;
-    c.meisai_kaishuu += entry.kaishuu || 0;
+    c.hours   += pf(entry.hours);
+    c.call    += pf(entry.call);
+    c.connect += pf(entry.connect);
+    c.meisai_kaishuu += pf(entry.kaishuu);
   }
 
   // 効率計算
