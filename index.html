@@ -1216,15 +1216,58 @@
   .badge-card {
     transition: transform .2s cubic-bezier(0.4, 0, 0.2, 1), border-color .15s, box-shadow .2s;
   }
-  /* ─── streak ticker animation ─── */
+  /* ─── STREAK GAMING TICKER ─────────────────────────────── */
   @keyframes ticker-scroll {
     0%   { transform: translateX(0); }
     100% { transform: translateX(-50%); }
   }
+  @keyframes streak-pulse {
+    0%,100% { opacity:1; transform:scale(1); }
+    50%     { opacity:.7; transform:scale(1.08); }
+  }
+  @keyframes slot-glow {
+    0%,100% { box-shadow: 0 0 8px rgba(245,158,11,.4), inset 0 0 8px rgba(245,158,11,.1); }
+    50%     { box-shadow: 0 0 20px rgba(245,158,11,.8), inset 0 0 14px rgba(245,158,11,.2); }
+  }
+  @keyframes fire-glow {
+    0%,100% { box-shadow: 0 0 10px rgba(239,68,68,.5), inset 0 0 10px rgba(239,68,68,.12); }
+    50%     { box-shadow: 0 0 26px rgba(239,68,68,.9), inset 0 0 18px rgba(239,68,68,.25); }
+  }
+  @keyframes legend-glow {
+    0%   { box-shadow: 0 0 12px rgba(168,85,247,.6), inset 0 0 12px rgba(168,85,247,.15); }
+    33%  { box-shadow: 0 0 24px rgba(236,72,153,.7), inset 0 0 18px rgba(236,72,153,.2); }
+    66%  { box-shadow: 0 0 24px rgba(99,102,241,.7), inset 0 0 18px rgba(99,102,241,.2); }
+    100% { box-shadow: 0 0 12px rgba(168,85,247,.6), inset 0 0 12px rgba(168,85,247,.15); }
+  }
+  @keyframes scanline {
+    0%   { background-position: 0 0; }
+    100% { background-position: 0 80px; }
+  }
+  @keyframes pip-spin {
+    0%   { transform: rotate(0deg) scale(1); }
+    50%  { transform: rotate(180deg) scale(1.3); }
+    100% { transform: rotate(360deg) scale(1); }
+  }
   .ticker-running {
-    animation: ticker-scroll 22s linear infinite;
+    animation: ticker-scroll 28s linear infinite;
   }
   .ticker-running:hover { animation-play-state: paused; }
+  .streak-card-reach {
+    animation: slot-glow 1.8s ease-in-out infinite;
+  }
+  .streak-card-hot {
+    animation: fire-glow 1.4s ease-in-out infinite;
+  }
+  .streak-card-legend {
+    animation: legend-glow 2.2s ease-in-out infinite;
+  }
+  .streak-label-pip {
+    display:inline-block;
+    animation: pip-spin 2s ease-in-out infinite;
+  }
+  .streak-name-glow {
+    animation: streak-pulse 2s ease-in-out infinite;
+  }
 
   .badge-card.earned:hover {
     transform: translateY(-3px);
@@ -1539,13 +1582,40 @@
 
       <div id="yesterday-mvp-section" style="margin-bottom:16px;"></div>
 
-      <!-- 🔥 連続成約ティッカー -->
-      <div id="streak-ticker-wrap" style="display:none;margin-bottom:20px;">
-        <div style="display:flex;align-items:center;gap:10px;background:linear-gradient(135deg,rgba(239,68,68,.10),rgba(245,158,11,.06));border:1px solid rgba(239,68,68,.25);border-radius:10px;padding:10px 16px;overflow:hidden;">
-          <div style="flex-shrink:0;font-size:13px;font-weight:800;color:#ef4444;letter-spacing:.08em;font-family:'JetBrains Mono',monospace;white-space:nowrap;">🔥 STREAK</div>
-          <div style="width:1px;height:20px;background:rgba(239,68,68,.3);flex-shrink:0;"></div>
-          <div style="overflow:hidden;flex:1;position:relative;">
-            <div id="streak-ticker-inner" style="display:inline-flex;gap:0;white-space:nowrap;will-change:transform;"></div>
+      <!-- 🎰 連続成約ゲーミングティッカー -->
+      <div id="streak-ticker-wrap" style="display:none;margin-bottom:20px;position:relative;">
+        <div style="
+          position:relative;
+          background:linear-gradient(135deg,#0f0f1a 0%,#1a0f2e 50%,#0f1a1a 100%);
+          border:1px solid rgba(139,92,246,.4);
+          border-radius:12px;
+          padding:0;
+          overflow:hidden;
+          box-shadow:0 0 30px rgba(99,102,241,.15), inset 0 1px 0 rgba(255,255,255,.05);
+        ">
+          <!-- スキャンライン演出 -->
+          <div style="
+            position:absolute;inset:0;pointer-events:none;z-index:1;
+            background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,.08) 3px,rgba(0,0,0,.08) 4px);
+            animation: scanline 4s linear infinite;
+          "></div>
+          <!-- 左ラベル -->
+          <div style="
+            display:flex;align-items:center;gap:0;
+          ">
+            <div style="
+              flex-shrink:0;padding:12px 16px;
+              background:linear-gradient(135deg,rgba(139,92,246,.3),rgba(99,102,241,.2));
+              border-right:1px solid rgba(139,92,246,.3);
+              position:relative;z-index:2;
+            ">
+              <div style="font-size:10px;color:#a78bfa;font-family:'JetBrains Mono',monospace;letter-spacing:.18em;font-weight:800;line-height:1;">HOT</div>
+              <div style="font-size:10px;color:#a78bfa;font-family:'JetBrains Mono',monospace;letter-spacing:.18em;font-weight:800;line-height:1.4;">STREAK</div>
+            </div>
+            <!-- ティッカー本体 -->
+            <div style="overflow:hidden;flex:1;position:relative;z-index:2;padding:8px 0;">
+              <div id="streak-ticker-inner" style="display:inline-flex;align-items:center;gap:0;white-space:nowrap;will-change:transform;"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -2926,9 +2996,12 @@ function renderDashboard() {
   let yesterdayTotal = {seiyaku: 0, dentou: 0, call: 0, short: 0, short_dentou: 0};
   for (const [key, rep] of Object.entries(state.dailyReports || {})) {
     if (key.endsWith("|" + yKey)) {
+      const memberId = key.split("|")[0];
+      const ent = getEntry(memberId, yKey);
       yesterdayTotal.seiyaku += rep.seiyaku || 0;
       yesterdayTotal.dentou += (rep.seiyaku_dentou || rep.dentou_plan || 0);
-      yesterdayTotal.call += rep.call || 0;
+      // ★ コールはentriesから補完（週次スプシが正本）
+      yesterdayTotal.call += parseFloat(rep.call) || parseFloat(ent.call) || 0;
       yesterdayTotal.short += rep.short || 0;
       yesterdayTotal.short_dentou += rep.short_dentou || 0;
     }
@@ -3102,42 +3175,112 @@ function renderStreakTicker() {
   members.forEach(m => {
     const streak = calcBizStreak(m.id);
     if (streak === 2) {
-      // リーチ！（2日連続）
-      items.push({ name: m.name, streak, label: "🎯 リーチ！", color: "#f59e0b", bg: "rgba(245,158,11,.15)", border: "rgba(245,158,11,.4)" });
+      items.push({ name: m.name, streak, tier: "reach" });
     } else if (streak >= 3) {
-      // 絶好調（3日以上）
-      const fire = streak >= 5 ? "🔥🔥" : "🔥";
-      items.push({ name: m.name, streak, label: `${fire} ${streak}日連続！`, color: "#ef4444", bg: "rgba(239,68,68,.15)", border: "rgba(239,68,68,.4)" });
+      items.push({ name: m.name, streak, tier: streak >= 5 ? "legend" : "hot" });
     }
   });
 
-  if (items.length === 0) {
-    wrap.style.display = "none";
-    return;
-  }
-
+  if (items.length === 0) { wrap.style.display = "none"; return; }
   wrap.style.display = "block";
 
-  // カードHTMLを生成（ループのために2倍複製）
-  const card = (it) => `
-    <div style="display:inline-flex;align-items:center;gap:8px;margin:0 24px;padding:4px 14px;
-      background:${it.bg};border:1px solid ${it.border};border-radius:20px;">
-      <span style="font-weight:800;font-size:13px;color:${it.color};">${it.label}</span>
-      <span style="font-size:13px;font-weight:600;color:var(--text-main);">${it.name}</span>
-      <span style="font-size:11px;color:var(--text-dim);font-family:'JetBrains Mono',monospace;">${it.streak}BIZ-DAY</span>
+  // ─── カード定義（tierごとにビジュアルが変わる）──────────────────────
+  const TIER = {
+    reach: {
+      cardClass: "streak-card-reach",
+      bg: "linear-gradient(135deg,rgba(245,158,11,.18),rgba(234,179,8,.08))",
+      border: "rgba(245,158,11,.5)",
+      pips:    ["🎰","🎰","❓"],   // スロット演出（最後が？）
+      badge:   { bg:"rgba(245,158,11,.25)", color:"#fbbf24", text:"REACH" },
+      nameColor: "#fde68a",
+      suffix: (s) => `あと1日で伝説突入`,
+      suffixColor: "#f59e0b",
+    },
+    hot: {
+      cardClass: "streak-card-hot",
+      bg: "linear-gradient(135deg,rgba(239,68,68,.2),rgba(220,38,38,.08))",
+      border: "rgba(239,68,68,.6)",
+      pips:    ["🎰","🎰","🎰"],
+      badge:   { bg:"rgba(239,68,68,.25)", color:"#fca5a5", text:"HOT!!" },
+      nameColor: "#fca5a5",
+      suffix: (s) => `${s}連続ジャックポット`,
+      suffixColor: "#ef4444",
+    },
+    legend: {
+      cardClass: "streak-card-legend",
+      bg: "linear-gradient(135deg,rgba(168,85,247,.22),rgba(99,102,241,.12),rgba(236,72,153,.1))",
+      border: "rgba(168,85,247,.7)",
+      pips:    ["👑","💎","🔥"],
+      badge:   { bg:"rgba(168,85,247,.3)", color:"#e879f9", text:"LEGEND" },
+      nameColor: "#f0abfc",
+      suffix: (s) => `${s}連続！神がかってる`,
+      suffixColor: "#a78bfa",
+    },
+  };
+
+  const slotPips = (pips) => pips.map((p,i) =>
+    `<span class="${i===2?'streak-label-pip':''}" style="font-size:15px;line-height:1;">${p}</span>`
+  ).join('');
+
+  const card = (it) => {
+    const t = TIER[it.tier];
+    const displayName = it.name.trim();
+    return `<div class="${t.cardClass}" style="
+      display:inline-flex;align-items:center;gap:10px;
+      margin:0 18px;padding:6px 16px 6px 10px;
+      background:${t.bg};
+      border:1px solid ${t.border};
+      border-radius:8px;
+      position:relative;
+    ">
+      <!-- スロット絵柄 -->
+      <div style="
+        display:flex;gap:2px;align-items:center;
+        background:rgba(0,0,0,.3);
+        border:1px solid rgba(255,255,255,.08);
+        border-radius:5px;
+        padding:3px 6px;
+        font-family:monospace;
+      ">${slotPips(t.pips)}</div>
+      <!-- バッジ -->
+      <div style="
+        background:${t.badge.bg};
+        color:${t.badge.color};
+        font-family:'JetBrains Mono',monospace;
+        font-size:9px;font-weight:900;
+        letter-spacing:.15em;
+        padding:2px 7px;border-radius:3px;
+        border:1px solid ${t.border};
+        white-space:nowrap;
+      ">${t.badge.text}</div>
+      <!-- 名前 -->
+      <span class="streak-name-glow" style="
+        font-size:14px;font-weight:800;
+        color:${t.nameColor};
+        text-shadow:0 0 8px ${t.nameColor}80;
+        white-space:nowrap;
+      ">${displayName}</span>
+      <!-- サフィックス -->
+      <span style="
+        font-size:11px;color:${t.suffixColor};
+        font-family:'JetBrains Mono',monospace;
+        letter-spacing:.04em;white-space:nowrap;opacity:.9;
+      ">${t.suffix(it.streak)}</span>
     </div>`;
+  };
 
-  const base = items.map(card).join("") + '<span style="display:inline-block;width:40px;"></span>';
-  inner.innerHTML = base + base; // 2周分でシームレスループ
+  // セパレータ（コインっぽい）
+  const sep = `<span style="display:inline-block;margin:0 8px;color:rgba(139,92,246,.4);font-size:12px;">◆</span>`;
+  const base = items.map(card).join(sep) + sep;
+  inner.innerHTML = base + base;
 
-  // アニメーション速度：アイテム数に応じて調整
-  const speed = Math.max(12, items.length * 8);
-  inner.style.animation = "none";
+  // 速度調整
+  const speed = Math.max(16, items.length * 10);
   inner.classList.remove("ticker-running");
-  // reflow trick
+  inner.style.animation = "none";
   void inner.offsetWidth;
-  inner.style.animation = `ticker-scroll ${speed}s linear infinite`;
   inner.classList.add("ticker-running");
+  inner.style.animationDuration = speed + "s";
 }
 
 function renderYesterdayMVP(month) {
@@ -3150,8 +3293,13 @@ function renderYesterdayMVP(month) {
 
   const members = state.members.filter(m => m.name && !m.isKanri); // 統括除外
   const dayRows = members.map(m => {
-    const rep = state.dailyReports[`${m.id}|${yKey}`];
-    if (!rep || !rep.hours) return null;
+    const rep = Object.assign({}, state.dailyReports[`${m.id}|${yKey}`] || {});
+    const ent = getEntry(m.id, yKey);
+    // ★ コール・コネクト・稼働はentriesで補完
+    if (!rep.hours   && ent.hours)   rep.hours   = parseFloat(ent.hours);
+    if (!rep.call    && ent.call)    rep.call    = parseFloat(ent.call);
+    if (!rep.connect && ent.connect) rep.connect = parseFloat(ent.connect);
+    if (!rep.hours) return null;
     return { m, rep, seiyaku: rep.seiyaku || 0, dentou: rep.seiyaku_dentou || rep.dentou_plan || 0, eff: rep.hours > 0 ? (rep.seiyaku||0) / (rep.hours/8) : 0 };
   }).filter(Boolean);
 
@@ -5182,6 +5330,7 @@ function aggregateMonthFromReports(memberId, month) {
     meisai_kaishuu: 0, short: 0, short_dentou: 0,
     days: 0
   };
+  const datesWithReport = new Set();
   for (const [key, rep] of Object.entries(state.dailyReports || {})) {
     const [mId, date] = key.split("|");
     if (mId !== memberId) continue;
@@ -5194,6 +5343,29 @@ function aggregateMonthFromReports(memberId, month) {
     // 後方互換：short → goukaku_cxl
     if (rep.short) agg.goukaku_cxl += (rep.short || 0);
     if (rep.short_dentou) agg.dentou_cxl += (rep.short_dentou || 0);
+    // ★ コール・コネクト・稼働時間はentriesから補完（週次スプシ取込が正本）
+    const ent = getEntry(memberId, date);
+    if (!rep.hours   && ent.hours)   agg.hours   += parseFloat(ent.hours);
+    if (!rep.call    && ent.call)    agg.call    += parseFloat(ent.call);
+    if (!rep.connect && ent.connect) agg.connect += parseFloat(ent.connect);
+    datesWithReport.add(date);
+    agg.days++;
+  }
+  // ★ dailyReportsにない日でentriesにあるデータも集計（週次スプシのみの日）
+  for (const [key, entry] of Object.entries(state.entries || {})) {
+    const [mId, date] = key.split("|");
+    if (mId !== memberId) continue;
+    if (parseInt(date.split("-")[1]) !== month) continue;
+    if (datesWithReport.has(date)) {
+      // 日報がある日は meisai_kaishuu のみ加算（重複集計防止）
+      agg.meisai_kaishuu += parseFloat(entry.kaishuu || 0);
+      continue;
+    }
+    if (!entry.hours && !entry.call) continue; // 空エントリはスキップ
+    agg.hours   += parseFloat(entry.hours   || 0);
+    agg.call    += parseFloat(entry.call    || 0);
+    agg.connect += parseFloat(entry.connect || 0);
+    agg.meisai_kaishuu += parseFloat(entry.kaishuu || 0);
     agg.days++;
   }
   // CXLを実績からマイナス
@@ -5205,15 +5377,6 @@ function aggregateMonthFromReports(memberId, month) {
   agg.callperhour = agg.hours > 0 ? agg.call / agg.hours : 0;
   agg.connectRate = agg.call > 0 ? agg.connect / agg.call : 0;
   agg.efficiency = agg.hours > 0 ? agg.seiyaku / (agg.hours / 8) : 0;
-
-  // 週次入力の「回収（kaishuu）」を明細回収に加算（レーダーチャート連動用）
-  for (const [key, entry] of Object.entries(state.entries || {})) {
-    const [mId, date] = key.split("|");
-    if (mId !== memberId) continue;
-    if (parseInt(date.split("-")[1]) !== month) continue;
-    agg.meisai_kaishuu += (entry.kaishuu || 0);
-  }
-
   return agg;
 }
 
