@@ -1216,6 +1216,16 @@
   .badge-card {
     transition: transform .2s cubic-bezier(0.4, 0, 0.2, 1), border-color .15s, box-shadow .2s;
   }
+  /* ─── streak ticker animation ─── */
+  @keyframes ticker-scroll {
+    0%   { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+  .ticker-running {
+    animation: ticker-scroll 22s linear infinite;
+  }
+  .ticker-running:hover { animation-play-state: paused; }
+
   .badge-card.earned:hover {
     transform: translateY(-3px);
     box-shadow: 0 8px 20px rgba(99,102,241,.15);
@@ -1527,7 +1537,18 @@
 
       <div class="kpi-grid" id="kpi-grid"></div>
 
-      <div id="yesterday-mvp-section" style="margin-bottom:24px;"></div>
+      <div id="yesterday-mvp-section" style="margin-bottom:16px;"></div>
+
+      <!-- 🔥 連続成約ティッカー -->
+      <div id="streak-ticker-wrap" style="display:none;margin-bottom:20px;">
+        <div style="display:flex;align-items:center;gap:10px;background:linear-gradient(135deg,rgba(239,68,68,.10),rgba(245,158,11,.06));border:1px solid rgba(239,68,68,.25);border-radius:10px;padding:10px 16px;overflow:hidden;">
+          <div style="flex-shrink:0;font-size:13px;font-weight:800;color:#ef4444;letter-spacing:.08em;font-family:'JetBrains Mono',monospace;white-space:nowrap;">🔥 STREAK</div>
+          <div style="width:1px;height:20px;background:rgba(239,68,68,.3);flex-shrink:0;"></div>
+          <div style="overflow:hidden;flex:1;position:relative;">
+            <div id="streak-ticker-inner" style="display:inline-flex;gap:0;white-space:nowrap;will-change:transform;"></div>
+          </div>
+        </div>
+      </div>
 
       <div class="section-title">月次目標進捗 <span style="color:var(--text-mute); font-size:13px; font-weight:400; font-family:'JetBrains Mono',monospace;">// MONTHLY PROGRESS</span></div>
       <div id="target-progress" style="margin-bottom:28px;"></div>
@@ -3045,7 +3066,7 @@ function renderDashboard() {
       const dentouTarget = dentouTargetTop;
       const dentouCount = r.a.seiyaku_dentou || r.a.dentou_plan || 0;
       const budgetRate = isSupervisor(r.m) ? null : (dentouCount / dentouTarget);
-      const badges = getMemberBadges(r.m, r.a, {budgetRate, teamBudgetAchieved:teamBudgetAchievedTop, teamBudget120:teamBudget120Top});
+      const badges = getMemberBadges(r.m, r.a, {budgetRate, teamBudgetAchieved:teamBudgetAchievedTop, teamBudget120:teamBudget120Top, hasStreak: calcBizStreak(r.m.id) >= 3});
 
       const dentou8h = per8h(r.a.seiyaku_dentou || r.a.dentou_plan || 0, r.a.hours);
 
@@ -3062,19 +3083,70 @@ function renderDashboard() {
   }
   document.getElementById("top5-list").innerHTML = html;
   renderYesterdayMVP(month);
+  renderStreakTicker();
 }
 
 // ═══════════════════════════════════════════════════════════
 //   YESTERDAY MVP & NEWCOMER RANKING
 // ═══════════════════════════════════════════════════════════
 
+// ── 連続成約ティッカー ──────────────────────────────────────
+function renderStreakTicker() {
+  const wrap  = document.getElementById("streak-ticker-wrap");
+  const inner = document.getElementById("streak-ticker-inner");
+  if (!wrap || !inner) return;
+
+  const members = (state.members || []).filter(m => m.active && m.name && !m.isKanri);
+  const items = [];
+
+  members.forEach(m => {
+    const streak = calcBizStreak(m.id);
+    if (streak === 2) {
+      // リーチ！（2日連続）
+      items.push({ name: m.name, streak, label: "🎯 リーチ！", color: "#f59e0b", bg: "rgba(245,158,11,.15)", border: "rgba(245,158,11,.4)" });
+    } else if (streak >= 3) {
+      // 絶好調（3日以上）
+      const fire = streak >= 5 ? "🔥🔥" : "🔥";
+      items.push({ name: m.name, streak, label: `${fire} ${streak}日連続！`, color: "#ef4444", bg: "rgba(239,68,68,.15)", border: "rgba(239,68,68,.4)" });
+    }
+  });
+
+  if (items.length === 0) {
+    wrap.style.display = "none";
+    return;
+  }
+
+  wrap.style.display = "block";
+
+  // カードHTMLを生成（ループのために2倍複製）
+  const card = (it) => `
+    <div style="display:inline-flex;align-items:center;gap:8px;margin:0 24px;padding:4px 14px;
+      background:${it.bg};border:1px solid ${it.border};border-radius:20px;">
+      <span style="font-weight:800;font-size:13px;color:${it.color};">${it.label}</span>
+      <span style="font-size:13px;font-weight:600;color:var(--text-main);">${it.name}</span>
+      <span style="font-size:11px;color:var(--text-dim);font-family:'JetBrains Mono',monospace;">${it.streak}BIZ-DAY</span>
+    </div>`;
+
+  const base = items.map(card).join("") + '<span style="display:inline-block;width:40px;"></span>';
+  inner.innerHTML = base + base; // 2周分でシームレスループ
+
+  // アニメーション速度：アイテム数に応じて調整
+  const speed = Math.max(12, items.length * 8);
+  inner.style.animation = "none";
+  inner.classList.remove("ticker-running");
+  // reflow trick
+  void inner.offsetWidth;
+  inner.style.animation = `ticker-scroll ${speed}s linear infinite`;
+  inner.classList.add("ticker-running");
+}
+
 function renderYesterdayMVP(month) {
   const el = document.getElementById("yesterday-mvp-section");
   if (!el) return;
-  const today = new Date();
-  const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
-  const yKey = yesterday.toISOString().slice(0, 10);
-  const yLabel = `${yesterday.getMonth()+1}/${yesterday.getDate()}（${["日","月","火","水","木","金","土"][yesterday.getDay()]}）`;
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const yKey   = prevBizDay(todayStr);              // 土日祝スキップ
+  const yDate  = new Date(yKey);
+  const yLabel = `${yDate.getMonth()+1}/${yDate.getDate()}（${["日","月","火","水","木","金","土"][yDate.getDay()]}）`;
 
   const members = state.members.filter(m => m.name && !m.isKanri); // 統括除外
   const dayRows = members.map(m => {
@@ -3411,6 +3483,7 @@ function renderRanking() {
         isNewcomerTop: isNewcomer(r.m) && r.seiyaku === maxNewcomerSeiyaku && maxNewcomerSeiyaku > 0,
         teamBudgetAchieved,
         teamBudget120,
+        hasStreak: calcBizStreak(r.m.id) >= 3,
       };
       const badges = getMemberBadges(r.m, r.a, ctx);
 
@@ -3802,6 +3875,49 @@ const JAPAN_HOLIDAYS = {
 // 日付文字列 (YYYY-MM-DD) を受け取り、祝日名 or null を返す
 function isHoliday(dateStr) {
   return JAPAN_HOLIDAYS[dateStr] || null;
+}
+
+// 直前の営業日（土日・祝日をスキップ）を返す
+function prevBizDay(dateStr) {
+  const d = new Date(dateStr);
+  do {
+    d.setDate(d.getDate() - 1);
+    const s = d.toISOString().slice(0, 10);
+    if (d.getDay() !== 0 && d.getDay() !== 6 && !isHoliday(s)) return s;
+  } while (true);
+}
+
+// 指定日から遡って直近N営業日のリストを返す（dateStr自身は含まない）
+function prevNBizDays(n, dateStr) {
+  const days = [];
+  const d = new Date(dateStr);
+  while (days.length < n) {
+    d.setDate(d.getDate() - 1);
+    const s = d.toISOString().slice(0, 10);
+    if (d.getDay() !== 0 && d.getDay() !== 6 && !isHoliday(s)) days.push(s);
+  }
+  return days; // 新しい日から古い日の順
+}
+
+// メンバーの「直近連続成約営業日数」を返す（昨日＝前営業日から遡る）
+function calcBizStreak(memberId) {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  let streak = 0;
+  let d = new Date(todayStr);
+  for (let i = 0; i < 40; i++) {            // 最大40暦日遡る
+    d.setDate(d.getDate() - 1);
+    const s = d.toISOString().slice(0, 10);
+    if (d.getDay() === 0 || d.getDay() === 6 || isHoliday(s)) continue; // 非営業日スキップ
+    const rep = (state.dailyReports || {})[`${memberId}|${s}`];
+    const seiyaku = rep ? (parseFloat(rep.seiyaku) || 0) : 0;
+    if (seiyaku > 0) {
+      streak++;
+      if (streak >= 4) break; // 4以上はまとめて扱うので十分
+    } else {
+      break; // 連続が途切れた
+    }
+  }
+  return streak;
 }
 
 function zenkakuToHankaku(str) {
