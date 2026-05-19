@@ -3492,6 +3492,10 @@ function aggregatePeriod(memberId, fromDate, toDate) {
   // ★ 後確CXL・電灯CXLを実績からマイナス
   agg.seiyaku        = Math.max(0, agg.seiyaku        - agg.goukaku_cxl);
   agg.seiyaku_dentou = Math.max(0, agg.seiyaku_dentou - agg.dentou_cxl);
+  // ★ douryokuをseiyaku_douryokuに統合（フィールド二重化を防止）
+  if (agg.douryoku > 0 && agg.seiyaku_douryoku === 0) {
+    agg.seiyaku_douryoku = agg.douryoku;
+  }
   agg.callperhour = agg.hours > 0 ? agg.call / agg.hours : 0;
   agg.connectRate = agg.call > 0 ? agg.connect / agg.call : 0;
   agg.efficiency = agg.hours > 0 ? agg.seiyaku / (agg.hours / 8) : 0;
@@ -5037,7 +5041,7 @@ async function importMonthlyExcel(file, year, month, statusEl) {
       maekaku_ok: "【前確OK】社数", goukaku_ok: "【後確】OK社数",
       dentou_plan: "電灯プラン数", seiyaku: "【実績】成約社数",
       seiyaku_dentou: "【実績】電灯プラン数",
-      douryoku: "動力プラン数",
+      seiyaku_douryoku: "動力プラン数",
       meisai_kaishuu: "明細回収数",
       goukaku_cxl: "後確OK後（-）",
       dentou_cxl: "電灯プラン（-）",
@@ -5381,6 +5385,10 @@ function aggregateMonthFromReports(memberId, month) {
   // ★ 後確CXL・電灯CXLを実績からマイナス
   agg.seiyaku        = Math.max(0, agg.seiyaku        - agg.goukaku_cxl);
   agg.seiyaku_dentou = Math.max(0, agg.seiyaku_dentou - agg.dentou_cxl);
+  // ★ douryokuをseiyaku_douryokuに統合（フィールド二重化を防止）
+  if (agg.douryoku > 0 && agg.seiyaku_douryoku === 0) {
+    agg.seiyaku_douryoku = agg.douryoku;
+  }
   agg.callperhour = agg.hours > 0 ? agg.call / agg.hours : 0;
   agg.connectRate = agg.call > 0 ? agg.connect / agg.call : 0;
   agg.efficiency = agg.hours > 0 ? agg.seiyaku / (agg.hours / 8) : 0;
@@ -5782,12 +5790,12 @@ function renderDailyReportInput() {
     {label:'前確OK',     fn:c=>c.maekaku_ok},
     {label:'後確OK',     fn:c=>c.goukaku_ok},
     {label:'電灯プラン', fn:c=>c.dentou_plan},
-    {label:'実績動力',   fn:c=>(c.douryoku||0)+(c.seiyaku_douryoku||0)},
+    {label:'実績動力',   fn:c=>c.seiyaku_douryoku||0},
     {label:'成約社数',   fn:c=>c.seiyaku,   bold:true, color:'var(--accent)'},
     {label:'実績電灯',   fn:c=>c.seiyaku_dentou, bold:true},
     {label:'社数効率',   fn:c=>eff(c.seiyaku, c.hours),        color:'#f59e0b', bold:true},
     {label:'電灯効率',   fn:c=>eff(c.seiyaku_dentou, c.hours), color:'#ec4899', bold:true},
-    {label:'P効率(電+動)',fn:c=>eff((c.seiyaku_dentou||0)+(c.douryoku||0)+(c.seiyaku_douryoku||0), c.hours), color:'#e879f9', bold:true},
+    {label:'P効率(電+動)',fn:c=>eff((c.seiyaku_dentou||0)+(c.seiyaku_douryoku||0), c.hours), color:'#e879f9', bold:true},
   ];
 
   // チーム合計行
@@ -5837,12 +5845,12 @@ function renderDailyReportInput() {
       <td style="padding:6px 3px;text-align:center;border-right:1px solid #f1f5f9;font-family:'JetBrains Mono',monospace;">${c.maekaku_ok}</td>
       <td style="padding:6px 3px;text-align:center;border-right:1px solid #e2e8f0;font-family:'JetBrains Mono',monospace;">${c.goukaku_ok}</td>
       <td style="padding:6px 3px;text-align:center;border-right:1px solid #f1f5f9;font-family:'JetBrains Mono',monospace;">${c.dentou_plan}</td>
-      <td style="padding:6px 3px;text-align:center;border-right:1px solid #e2e8f0;font-family:'JetBrains Mono',monospace;">${(c.douryoku||0)+(c.seiyaku_douryoku||0)}</td>
+      <td style="padding:6px 3px;text-align:center;border-right:1px solid #e2e8f0;font-family:'JetBrains Mono',monospace;">${c.seiyaku_douryoku||0}</td>
       <td style="padding:6px 3px;text-align:center;border-right:1px solid #f1f5f9;font-family:'JetBrains Mono',monospace;font-weight:700;color:#1e40af;">${c.seiyaku}</td>
       <td style="padding:6px 3px;text-align:center;border-right:1px solid #e2e8f0;font-family:'JetBrains Mono',monospace;font-weight:700;color:#1e40af;">${c.seiyaku_dentou}</td>
       <td style="padding:6px 3px;text-align:center;border-right:1px solid #f1f5f9;font-family:'JetBrains Mono',monospace;font-weight:700;color:${effColor(eff(c.seiyaku,c.hours))};">${eff(c.seiyaku,c.hours)}</td>
       <td style="padding:6px 3px;text-align:center;border-right:1px solid #f1f5f9;font-family:'JetBrains Mono',monospace;font-weight:700;color:${effColor(eff(c.seiyaku_dentou,c.hours))};">${eff(c.seiyaku_dentou,c.hours)}</td>
-      <td style="padding:6px 3px;text-align:center;font-family:'JetBrains Mono',monospace;font-weight:700;color:${effColor(eff((c.seiyaku_dentou||0)+(c.douryoku||0)+(c.seiyaku_douryoku||0),c.hours))};">${eff((c.seiyaku_dentou||0)+(c.douryoku||0)+(c.seiyaku_douryoku||0),c.hours)}</td>
+      <td style="padding:6px 3px;text-align:center;font-family:'JetBrains Mono',monospace;font-weight:700;color:${effColor(eff((c.seiyaku_dentou||0)+(c.douryoku||0)+(c.seiyaku_douryoku||0),c.hours))};">${eff((c.seiyaku_dentou||0)+(c.seiyaku_douryoku||0),c.hours)}</td>
     </tr>`;
   });
 
@@ -5858,12 +5866,12 @@ function renderDailyReportInput() {
     <td style="padding:8px 3px;text-align:center;color:#fff;font-family:'JetBrains Mono',monospace;border-right:1px solid rgba(255,255,255,0.1);">${teamCum.maekaku_ok}</td>
     <td style="padding:8px 3px;text-align:center;color:#fff;font-family:'JetBrains Mono',monospace;border-right:1px solid rgba(255,255,255,0.2);">${teamCum.goukaku_ok}</td>
     <td style="padding:8px 3px;text-align:center;color:#fff;font-family:'JetBrains Mono',monospace;border-right:1px solid rgba(255,255,255,0.1);">${teamCum.dentou_plan}</td>
-    <td style="padding:8px 3px;text-align:center;color:#fff;font-family:'JetBrains Mono',monospace;border-right:1px solid rgba(255,255,255,0.2);">${(teamCum.douryoku||0)+(teamCum.seiyaku_douryoku||0)}</td>
+    <td style="padding:8px 3px;text-align:center;color:#fff;font-family:'JetBrains Mono',monospace;border-right:1px solid rgba(255,255,255,0.2);">${teamCum.seiyaku_douryoku||0}</td>
     <td style="padding:8px 3px;text-align:center;color:#fbbf24;font-family:'JetBrains Mono',monospace;border-right:1px solid rgba(255,255,255,0.1);">${teamCum.seiyaku}</td>
     <td style="padding:8px 3px;text-align:center;color:#fbbf24;font-family:'JetBrains Mono',monospace;border-right:1px solid rgba(255,255,255,0.2);">${teamCum.seiyaku_dentou}</td>
     <td style="padding:8px 3px;text-align:center;color:#6ee7b7;font-family:'JetBrains Mono',monospace;border-right:1px solid rgba(255,255,255,0.1);">${eff(teamCum.seiyaku,teamCum.hours)}</td>
     <td style="padding:8px 3px;text-align:center;color:#6ee7b7;font-family:'JetBrains Mono',monospace;border-right:1px solid rgba(255,255,255,0.1);">${eff(teamCum.seiyaku_dentou,teamCum.hours)}</td>
-    <td style="padding:8px 3px;text-align:center;color:#6ee7b7;font-family:'JetBrains Mono',monospace;">${eff((teamCum.seiyaku_dentou||0)+(teamCum.douryoku||0)+(teamCum.seiyaku_douryoku||0),teamCum.hours)}</td>
+    <td style="padding:8px 3px;text-align:center;color:#6ee7b7;font-family:'JetBrains Mono',monospace;">${eff((teamCum.seiyaku_dentou||0)+(teamCum.seiyaku_douryoku||0),teamCum.hours)}</td>
   </tr>`;
 
   html += `</tbody></table></div></div>`;
@@ -6285,7 +6293,7 @@ function generateMailText() {
     dayMaekakuOK += pf(rep.maekaku_ok);
     dayGoukakuOK += pf(rep.goukaku_ok);
     dayDentou    += pf(rep.seiyaku_dentou);   // 実績成約電灯プランのみ
-    dayDouryoku  += pf(rep.douryoku) + pf(rep.seiyaku_douryoku); // 動力（両フィールド合算）
+    dayDouryoku  += pf(rep.seiyaku_douryoku) || pf(rep.douryoku);  // ★ seiyaku_douryoku優先
     daySeiyaku   += pf(rep.seiyaku);
     dayCXL       += pf(rep.goukaku_cxl || rep.cxl_sha);     // ★ 後確CXL
     dayCXLDentou += pf(rep.dentou_cxl  || rep.cxl_dentou);  // ★ 電灯CXL
@@ -6313,7 +6321,7 @@ function generateMailText() {
     monCXL       += pf(agg.goukaku_cxl);      // ★ 後確CXL（供給開始前CXL）
     monCXLDentou += pf(agg.dentou_cxl);        // ★ 電灯CXL
     monDentou    += pf(agg.seiyaku_dentou);    // 実績成約電灯プラン（CXL除算済み）
-    monDouryoku  += pf(agg.douryoku) + pf(agg.seiyaku_douryoku); // 動力（両フィールド合算）
+    monDouryoku  += pf(agg.seiyaku_douryoku);  // ★ seiyaku_douryokuを正本とする
     monSeiyaku   += pf(agg.seiyaku);           // 成約社数（CXL除算済み）
   });
 
