@@ -3465,11 +3465,14 @@ function aggregatePeriod(memberId, fromDate, toDate) {
       if (k === "days") continue;
       agg[k] += parseFloat(rep[k] || 0);
     }
-    // dailyReportsにcall/connectが未入力の場合はentriesから補完
+    // ★ コール・コネクト・稼働はentriesが正本（週次スプシ）→ entriesに値があれば常に上書き
     const entry = getEntry(memberId, date);
-    if (!rep.hours && entry.hours) agg.hours += parseFloat(entry.hours || 0);
-    if (!rep.call  && entry.call)  agg.call  += parseFloat(entry.call  || 0);
-    if (!rep.connect && entry.connect) agg.connect += parseFloat(entry.connect || 0);
+    if (entry.hours   > 0) { agg.hours   = agg.hours   - parseFloat(rep.hours   || 0) + parseFloat(entry.hours); }
+    else if (!rep.hours)   { /* 両方なし: そのまま */ }
+    if (entry.call    > 0) { agg.call    = agg.call    - parseFloat(rep.call    || 0) + parseFloat(entry.call); }
+    else if (!rep.call)    { /* callなし: そのまま */ }
+    if (entry.connect > 0) { agg.connect = agg.connect - parseFloat(rep.connect || 0) + parseFloat(entry.connect); }
+    else if (!rep.connect) { /* connectなし: そのまま */ }
     datesWithReport.add(date);
     agg.days++;
   }
@@ -5348,50 +5351,44 @@ function aggregateMonthFromReports(memberId, month) {
       if (k === "days") continue;
       agg[k] += parseFloat(rep[k] || 0);
     }
-    // 後方互換：short → goukaku_cxl
-    if (rep.short) agg.goukaku_cxl += (rep.short || 0);
-    if (rep.short_dentou) agg.dentou_cxl += (rep.short_dentou || 0);
-    // ★ コール・コネクト・稼働時間はentriesから補完（週次スプシ取込が正本）
+    // 後方互換：goukaku_cxlが未記録の古いデータはshortで補完（重複しないよう rep.goukaku_cxl が0のときのみ）
+    if (!rep.goukaku_cxl && rep.short)       agg.goukaku_cxl += parseFloat(rep.short || 0);
+    if (!rep.dentou_cxl  && rep.short_dentou) agg.dentou_cxl  += parseFloat(rep.short_dentou || 0);
+    // コール・コネクト・稼働はentriesが正本（週次スプシ）→ 値があれば上書き
     const ent = getEntry(memberId, date);
-    if (!rep.hours   && ent.hours)   agg.hours   += parseFloat(ent.hours);
-    if (!rep.call    && ent.call)    agg.call    += parseFloat(ent.call);
-    if (!rep.connect && ent.connect) agg.connect += parseFloat(ent.connect);
+    if (ent.hours   > 0) { agg.hours   = agg.hours   - parseFloat(rep.hours   || 0) + parseFloat(ent.hours); }
+    if (ent.call    > 0) { agg.call    = agg.call    - parseFloat(rep.call    || 0) + parseFloat(ent.call); }
+    if (ent.connect > 0) { agg.connect = agg.connect - parseFloat(rep.connect || 0) + parseFloat(ent.connect); }
     datesWithReport.add(date);
     agg.days++;
   }
-  // ★ dailyReportsにない日でentriesにあるデータも集計（週次スプシのみの日）
+  // dailyReportsにない日でentriesにあるデータも集計（週次スプシのみの日）
   for (const [key, entry] of Object.entries(state.entries || {})) {
     const [mId, date] = key.split("|");
     if (mId !== memberId) continue;
     if (parseInt(date.split("-")[1]) !== month) continue;
     if (datesWithReport.has(date)) {
-      // 日報がある日は meisai_kaishuu のみ加算（重複集計防止）
       agg.meisai_kaishuu += parseFloat(entry.kaishuu || 0);
       continue;
     }
-    if (!entry.hours && !entry.call) continue; // 空エントリはスキップ
+    if (!entry.hours && !entry.call) continue;
     agg.hours   += parseFloat(entry.hours   || 0);
     agg.call    += parseFloat(entry.call    || 0);
     agg.connect += parseFloat(entry.connect || 0);
     agg.meisai_kaishuu += parseFloat(entry.kaishuu || 0);
     agg.days++;
   }
-  // CXLを実績からマイナス
-  agg.seiyaku     = Math.max(0, agg.seiyaku     - agg.goukaku_cxl);
-  agg.seiyaku_dentou = Math.max(0, agg.seiyaku_dentou - agg.dentou_cxl);
-  // douryoku統合（Excelから取り込んだdouryokuも含める）
-  agg.seiyaku_douryoku = agg.seiyaku_douryoku + agg.douryoku;
   for (const k of Object.keys(agg)) { if (typeof agg[k] !== "number" || isNaN(agg[k])) agg[k] = 0; }
-  // ★ 後確CXL・電灯CXLを実績からマイナス
+  // CXL除算（1回のみ）
   agg.seiyaku        = Math.max(0, agg.seiyaku        - agg.goukaku_cxl);
   agg.seiyaku_dentou = Math.max(0, agg.seiyaku_dentou - agg.dentou_cxl);
-  // ★ douryokuをseiyaku_douryokuに統合（フィールド二重化を防止）
+  // douryokuをseiyaku_douryokuに統合（フィールド二重化を防止）
   if (agg.douryoku > 0 && agg.seiyaku_douryoku === 0) {
     agg.seiyaku_douryoku = agg.douryoku;
   }
   agg.callperhour = agg.hours > 0 ? agg.call / agg.hours : 0;
   agg.connectRate = agg.call > 0 ? agg.connect / agg.call : 0;
-  agg.efficiency = agg.hours > 0 ? agg.seiyaku / (agg.hours / 8) : 0;
+  agg.efficiency  = agg.hours > 0 ? agg.seiyaku / (agg.hours / 8) : 0;
   return agg;
 }
 
