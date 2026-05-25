@@ -4062,18 +4062,23 @@ function prevNBizDays(n, dateStr) {
 function calcBizStreak(memberId) {
   const todayStr = new Date().toISOString().slice(0, 10);
   let streak = 0;
-  let d = new Date(todayStr);
-  for (let i = 0; i < 40; i++) {            // 最大40暦日遡る
+  const d = new Date(todayStr);
+  for (let i = 0; i < 40; i++) {
     d.setDate(d.getDate() - 1);
     const s = d.toISOString().slice(0, 10);
-    if (d.getDay() === 0 || d.getDay() === 6 || isHoliday(s)) continue; // 非営業日スキップ
+    if (d.getDay() === 0 || d.getDay() === 6 || isHoliday(s)) continue;
     const rep = (state.dailyReports || {})[`${memberId}|${s}`];
-    const seiyaku = rep ? (parseFloat(rep.seiyaku) || 0) : 0;
-    if (seiyaku > 0) {
+    if (!rep) { break; }
+    // seiyaku / maekaku_ok / goukaku_ok のいずれかがあれば成約日とみなす
+    const hasSeiyaku =
+      parseFloat(rep.seiyaku      || 0) > 0 ||
+      parseFloat(rep.maekaku_ok   || 0) > 0 ||
+      parseFloat(rep.goukaku_ok   || 0) > 0;
+    if (hasSeiyaku) {
       streak++;
-      if (streak >= 4) break; // 4以上はまとめて扱うので十分
+      if (streak >= 6) break;
     } else {
-      break; // 連続が途切れた
+      break;
     }
   }
   return streak;
