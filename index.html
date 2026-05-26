@@ -11395,7 +11395,9 @@ function generateMailText() {
   const cxlRate = (monSeiyaku+monCXL)>0?f(monCXL/(monSeiyaku+monCXL)*100,1):"0";
 
   const text =
-`【${dateJa} 日次報告】
+`KPIトラッカー：https://flex20260501-ops.github.io/flex-tracker-honban/
+
+【${dateJa} 日次報告】
 
 稼働時間：${f(dayH,1)}ｈ　稼働ブース${f(dayBooth,2)}b　コール数${f(dayCallH,2)}/1h
 パス数：${fi(dayPass)}件  (${f(dayPassH,3)}h)
