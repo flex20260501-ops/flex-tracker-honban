@@ -3495,9 +3495,11 @@ function aggregatePeriod(memberId, fromDate, toDate) {
   // ★ 後確CXL・電灯CXLを実績からマイナス
   agg.seiyaku        = Math.max(0, agg.seiyaku        - agg.goukaku_cxl);
   agg.seiyaku_dentou = Math.max(0, agg.seiyaku_dentou - agg.dentou_cxl);
-  // ★ douryoku / seiyaku_douryoku 統合（どちらかに入っていれば合算）
-  agg.seiyaku_douryoku = (agg.seiyaku_douryoku || 0) + (agg.douryoku || 0);
-  agg.douryoku = 0;  // douryokuはseiyaku_douryokuに吸収
+  // ★ douryoku / seiyaku_douryoku：seiyaku_douryokuが正本、なければdouryokuで補完
+  if (agg.seiyaku_douryoku === 0 && agg.douryoku > 0) {
+    agg.seiyaku_douryoku = agg.douryoku;
+  }
+  agg.douryoku = 0;
   agg.callperhour = agg.hours > 0 ? agg.call / agg.hours : 0;
   agg.connectRate = agg.call > 0 ? agg.connect / agg.call : 0;
   agg.efficiency = agg.hours > 0 ? agg.seiyaku / (agg.hours / 8) : 0;
@@ -5386,8 +5388,10 @@ function aggregateMonthFromReports(memberId, month) {
   // CXL除算（1回のみ）
   agg.seiyaku        = Math.max(0, agg.seiyaku        - agg.goukaku_cxl);
   agg.seiyaku_dentou = Math.max(0, agg.seiyaku_dentou - agg.dentou_cxl);
-  // douryoku / seiyaku_douryoku 統合（合算してseiyaku_douryokuへ）
-  agg.seiyaku_douryoku = (agg.seiyaku_douryoku || 0) + (agg.douryoku || 0);
+  // douryoku / seiyaku_douryoku：seiyaku_douryokuが正本、なければdouryokuで補完
+  if (agg.seiyaku_douryoku === 0 && agg.douryoku > 0) {
+    agg.seiyaku_douryoku = agg.douryoku;
+  }
   agg.douryoku = 0;
   agg.callperhour = agg.hours > 0 ? agg.call / agg.hours : 0;
   agg.connectRate = agg.call > 0 ? agg.connect / agg.call : 0;
