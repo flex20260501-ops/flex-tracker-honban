@@ -2477,6 +2477,7 @@ async function loadState() {
     if (raw) { Object.assign(state, JSON.parse(raw)); }
   } catch(e) { console.warn("loadState error (using defaults):", e); }
   state.firebaseConfig = hardcodedFirebaseConfig; // 常にHTMLの設定を使用
+  resetMgmtCache(); // 管理表時間キャッシュをリセット
 
   // 旧バージョンとの互換性: 必要なフィールドが無ければデフォルトを補完
   if (!state.quickLinks) state.quickLinks = [
@@ -2569,21 +2570,35 @@ function showToast(msg) {
 function ekey(memberId, date) { return `${memberId}|${date}`; }
 
 // SPREADSHEET_ENTRIES から管理表稼働時間を直接取得（Firebase同期の影響を受けない）
-function getMgmtHours(memberId, dateStr) {
-  // memberId → 名前に変換してSPREADSHEET_ENTRIESを直接検索
-  const member = (state.members || []).find(m => m.id === memberId);
-  if (!member) return 0;
-  // スペース正規化して一致確認
-  const nameTrimmed = member.name.replace(/[　\s]/g, ' ').trim();
-  // SPREADSHEET_ENTRIESのキーパターン: "名前 名前|YYYY-MM-DD"
+// SPREADSHEET_ENTRIES を memberId|date → hours に変換したキャッシュマップ
+// （初回呼び出し時に一度だけ構築）
+let _mgmtHoursCache = null;
+function _buildMgmtCache() {
+  _mgmtHoursCache = {};
+  const members = state.members || [];
+  // 名前→memberId の逆引きマップ
+  const nameToId = {};
+  members.forEach(m => {
+    const n = m.name.replace(/[　\s]+/g, ' ').trim();
+    nameToId[n] = m.id;
+  });
   for (const [key, val] of Object.entries(window.SPREADSHEET_ENTRIES || {})) {
-    const [kName, kDate] = key.split('|');
-    if (kDate === dateStr && kName.replace(/[　\s]/g,' ').trim() === nameTrimmed) {
-      return parseFloat(val.hours) || 0;
+    const barIdx = key.lastIndexOf('|');
+    if (barIdx < 0) continue;
+    const kName = key.slice(0, barIdx).replace(/[　\s]+/g, ' ').trim();
+    const kDate = key.slice(barIdx + 1);
+    const mId   = nameToId[kName];
+    if (mId && val.hours > 0) {
+      _mgmtHoursCache[`${mId}|${kDate}`] = parseFloat(val.hours) || 0;
     }
   }
-  return 0;
 }
+function getMgmtHours(memberId, dateStr) {
+  if (!_mgmtHoursCache) _buildMgmtCache();
+  return _mgmtHoursCache[`${memberId}|${dateStr}`] || 0;
+}
+// state変更時にキャッシュをリセット
+function resetMgmtCache() { _mgmtHoursCache = null; }
 
 function getEntry(memberId, date) {
   return state.entries[ekey(memberId, date)] || {
