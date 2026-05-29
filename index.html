@@ -2576,7 +2576,7 @@ function getMgmtHours(memberId, dateStr) {
   // スペース正規化して一致確認
   const nameTrimmed = member.name.replace(/[　\s]/g, ' ').trim();
   // SPREADSHEET_ENTRIESのキーパターン: "名前 名前|YYYY-MM-DD"
-  for (const [key, val] of Object.entries(SPREADSHEET_ENTRIES)) {
+  for (const [key, val] of Object.entries(window.SPREADSHEET_ENTRIES || {})) {
     const [kName, kDate] = key.split('|');
     if (kDate === dateStr && kName.replace(/[　\s]/g,' ').trim() === nameTrimmed) {
       return parseFloat(val.hours) || 0;
@@ -5447,7 +5447,7 @@ function aggregateDayFromReports(memberId, date) {
 // スプレッドシートデータ一括インポート関数
 // ═══════════════════════════════════════════
 async function importSpreadsheetData() {
-  const SPREADSHEET_ENTRIES = {
+  window.SPREADSHEET_ENTRIES = {
   "吉田 崇人|2026-04-01": {
     "hours": 8.0,
     "call": 1.0,
@@ -11389,7 +11389,7 @@ async function importSpreadsheetData() {
     "mikomi_c": 0
   }
 };
-  for (const [key, val] of Object.entries(SPREADSHEET_ENTRIES)) {
+  for (const [key, val] of Object.entries(window.SPREADSHEET_ENTRIES || {})) {
     const [memberName, date] = key.split('|');
 
     // state.membersからname照合（スペース正規化）
