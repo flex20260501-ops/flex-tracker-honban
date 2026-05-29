@@ -12042,6 +12042,8 @@ function drawMemberHistory(member, currentMonth) {
   let seiyakuData = [];
   let dentouData = [];
   let effData = [];
+  let passData = [];
+  let passEffData = [];
   let targetSeiyakuLine = [];
   let targetDentouLine = [];
   let targetEffLine = [];
@@ -12057,6 +12059,8 @@ function drawMemberHistory(member, currentMonth) {
       const dentou = a.seiyaku_dentou || a.dentou_plan || 0;
       dentouData.push(dentou);
       effData.push(a.hours > 0 ? dentou / (a.hours / 8) : 0);
+      passData.push(a.pass || 0);
+      passEffData.push(a.hours > 0 ? (a.pass || 0) / a.hours : 0);
     });
     // Targets per month
     targetSeiyakuLine = months.map(() => target.seiyaku);
@@ -12193,6 +12197,30 @@ function drawMemberHistory(member, currentMonth) {
           borderWidth: 2,
           borderDash: [5, 4],
           pointRadius: 0,
+          fill: false
+        },
+        {
+          label: "パス数",
+          data: passData,
+          borderColor: "rgba(139,92,246,1)",
+          backgroundColor: "rgba(139,92,246,0.08)",
+          tension: 0.3,
+          yAxisID: 'y',
+          borderWidth: 2,
+          pointRadius: 3,
+          borderDash: [3, 2],
+          fill: false
+        },
+        {
+          label: "パス/h",
+          data: passEffData,
+          borderColor: "rgba(16,185,129,1)",
+          backgroundColor: "rgba(16,185,129,0.06)",
+          tension: 0.3,
+          yAxisID: 'y1',
+          borderWidth: 2,
+          pointRadius: 3,
+          borderDash: [3, 2],
           fill: false
         }
       ]
