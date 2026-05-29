@@ -2568,6 +2568,23 @@ function showToast(msg) {
 
 function ekey(memberId, date) { return `${memberId}|${date}`; }
 
+// SPREADSHEET_ENTRIES から管理表稼働時間を直接取得（Firebase同期の影響を受けない）
+function getMgmtHours(memberId, dateStr) {
+  // memberId → 名前に変換してSPREADSHEET_ENTRIESを直接検索
+  const member = (state.members || []).find(m => m.id === memberId);
+  if (!member) return 0;
+  // スペース正規化して一致確認
+  const nameTrimmed = member.name.replace(/[　\s]/g, ' ').trim();
+  // SPREADSHEET_ENTRIESのキーパターン: "名前 名前|YYYY-MM-DD"
+  for (const [key, val] of Object.entries(SPREADSHEET_ENTRIES)) {
+    const [kName, kDate] = key.split('|');
+    if (kDate === dateStr && kName.replace(/[　\s]/g,' ').trim() === nameTrimmed) {
+      return parseFloat(val.hours) || 0;
+    }
+  }
+  return 0;
+}
+
 function getEntry(memberId, date) {
   return state.entries[ekey(memberId, date)] || {
     hours: 0, call: 0, connect: 0, irai_done: 0, kaishuu: 0,
@@ -3465,14 +3482,13 @@ function aggregatePeriod(memberId, fromDate, toDate) {
       if (k === "days") continue;
       agg[k] += parseFloat(rep[k] || 0);
     }
-    // ★ コール・コネクト・稼働はentriesが正本（週次スプシ）→ entriesに値があれば常に上書き
+    // ★ hours はSPREADSHEET_ENTRIES正本、call/connectはentries優先
     const entry = getEntry(memberId, date);
-    if (entry.hours   > 0) { agg.hours   = agg.hours   - parseFloat(rep.hours   || 0) + parseFloat(entry.hours); }
-    else if (!rep.hours)   { /* 両方なし: そのまま */ }
+    const _mh = getMgmtHours(memberId, date);
+    if (_mh > 0) { agg.hours = agg.hours - parseFloat(rep.hours || 0) + _mh; }
+    else if (entry.hours > 0) { agg.hours = agg.hours - parseFloat(rep.hours || 0) + parseFloat(entry.hours); }
     if (entry.call    > 0) { agg.call    = agg.call    - parseFloat(rep.call    || 0) + parseFloat(entry.call); }
-    else if (!rep.call)    { /* callなし: そのまま */ }
     if (entry.connect > 0) { agg.connect = agg.connect - parseFloat(rep.connect || 0) + parseFloat(entry.connect); }
-    else if (!rep.connect) { /* connectなし: そのまま */ }
     datesWithReport.add(date);
     agg.days++;
   }
@@ -3485,7 +3501,8 @@ function aggregatePeriod(memberId, fromDate, toDate) {
     if (toDate && date > toDate) continue;
     if (datesWithReport.has(date)) continue; // dailyReportsがある日は既に集計済み
     if (!entry.hours && !entry.call) continue; // 空エントリはスキップ
-    agg.hours   += parseFloat(entry.hours   || 0);
+    const mgmtHb = getMgmtHours(memberId, date);
+    agg.hours   += mgmtHb > 0 ? mgmtHb : parseFloat(entry.hours || 0);
     agg.call    += parseFloat(entry.call    || 0);
     agg.connect += parseFloat(entry.connect || 0);
     agg.days++;
@@ -5360,9 +5377,11 @@ function aggregateMonthFromReports(memberId, month) {
     // 後方互換：goukaku_cxlが未記録の古いデータはshortで補完（重複しないよう rep.goukaku_cxl が0のときのみ）
     if (!rep.goukaku_cxl && rep.short)       agg.goukaku_cxl += parseFloat(rep.short || 0);
     if (!rep.dentou_cxl  && rep.short_dentou) agg.dentou_cxl  += parseFloat(rep.short_dentou || 0);
-    // コール・コネクト・稼働はentriesが正本（週次スプシ）→ 値があれば上書き
+    // ★ hours はSPREADSHEET_ENTRIES正本、call/connectはentries優先
     const ent = getEntry(memberId, date);
-    if (ent.hours   > 0) { agg.hours   = agg.hours   - parseFloat(rep.hours   || 0) + parseFloat(ent.hours); }
+    const _mh2 = getMgmtHours(memberId, date);
+    if (_mh2 > 0) { agg.hours = agg.hours - parseFloat(rep.hours || 0) + _mh2; }
+    else if (ent.hours > 0) { agg.hours = agg.hours - parseFloat(rep.hours || 0) + parseFloat(ent.hours); }
     if (ent.call    > 0) { agg.call    = agg.call    - parseFloat(rep.call    || 0) + parseFloat(ent.call); }
     if (ent.connect > 0) { agg.connect = agg.connect - parseFloat(rep.connect || 0) + parseFloat(ent.connect); }
     datesWithReport.add(date);
@@ -10478,6 +10497,896 @@ async function importSpreadsheetData() {
     "mikomi_a": 0,
     "mikomi_b": 0,
     "mikomi_c": 0
+  },
+  "吉田 崇人|2026-05-22": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "佐々木 和輝|2026-05-22": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "谷水 大地|2026-05-22": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "長﨑 拓也|2026-05-22": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "丸山 直希|2026-05-22": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "石川 裕樹|2026-05-22": {
+    "hours": 7,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "與座 万葉|2026-05-22": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "石川 善啓|2026-05-22": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "瀬川 良介|2026-05-22": {
+    "hours": 7,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "岩崎 なつみ|2026-05-22": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "小西 莉緒奈|2026-05-22": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "相良 亮一|2026-05-22": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "冨岡 大悟|2026-05-22": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "山下 美恵|2026-05-22": {
+    "hours": 5,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "大須賀 章乃|2026-05-22": {
+    "hours": 5,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "本多 真由美|2026-05-22": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "寺口 輝|2026-05-22": {
+    "hours": 7,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "西村 響太|2026-05-22": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "吉田 崇人|2026-05-25": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "佐々木 和輝|2026-05-25": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "谷水 大地|2026-05-25": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "長﨑 拓也|2026-05-25": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "丸山 直希|2026-05-25": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "石川 裕樹|2026-05-25": {
+    "hours": 7,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "與座 万葉|2026-05-25": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "石川 善啓|2026-05-25": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "瀬川 良介|2026-05-25": {
+    "hours": 7,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "岩崎 なつみ|2026-05-25": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "小西 莉緒奈|2026-05-25": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "相良 亮一|2026-05-25": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "冨岡 大悟|2026-05-25": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "山下 美恵|2026-05-25": {
+    "hours": 5,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "大須賀 章乃|2026-05-25": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "本多 真由美|2026-05-25": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "西村 響太|2026-05-25": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "栗山 冨美|2026-05-25": {
+    "hours": 6,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "吉田 崇人|2026-05-26": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "佐々木 和輝|2026-05-26": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "谷水 大地|2026-05-26": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "長﨑 拓也|2026-05-26": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "丸山 直希|2026-05-26": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "石川 裕樹|2026-05-26": {
+    "hours": 7,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "與座 万葉|2026-05-26": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "石川 善啓|2026-05-26": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "瀬川 良介|2026-05-26": {
+    "hours": 7,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "小西 莉緒奈|2026-05-26": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "相良 亮一|2026-05-26": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "冨岡 大悟|2026-05-26": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "山下 美恵|2026-05-26": {
+    "hours": 5,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "大須賀 章乃|2026-05-26": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "本多 真由美|2026-05-26": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "西村 響太|2026-05-26": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "栗山 冨美|2026-05-26": {
+    "hours": 6,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "吉田 崇人|2026-05-27": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "佐々木 和輝|2026-05-27": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "谷水 大地|2026-05-27": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "長﨑 拓也|2026-05-27": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "丸山 直希|2026-05-27": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "石川 裕樹|2026-05-27": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "與座 万葉|2026-05-27": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "石川 善啓|2026-05-27": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "瀬川 良介|2026-05-27": {
+    "hours": 7,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "小西 莉緒奈|2026-05-27": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "相良 亮一|2026-05-27": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "冨岡 大悟|2026-05-27": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "山下 美恵|2026-05-27": {
+    "hours": 5,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "大須賀 章乃|2026-05-27": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "本多 真由美|2026-05-27": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "西村 響太|2026-05-27": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "中岸 美智|2026-05-27": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "吉田 崇人|2026-05-28": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "佐々木 和輝|2026-05-28": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "谷水 大地|2026-05-28": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "長﨑 拓也|2026-05-28": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "丸山 直希|2026-05-28": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "石川 裕樹|2026-05-28": {
+    "hours": 6,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "與座 万葉|2026-05-28": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "石川 善啓|2026-05-28": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "瀬川 良介|2026-05-28": {
+    "hours": 7,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "岩崎 なつみ|2026-05-28": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "小西 莉緒奈|2026-05-28": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "相良 亮一|2026-05-28": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "冨岡 大悟|2026-05-28": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "山下 美恵|2026-05-28": {
+    "hours": 5,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "大須賀 章乃|2026-05-28": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "本多 真由美|2026-05-28": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "寺口 輝|2026-05-28": {
+    "hours": 6.5,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "西村 響太|2026-05-28": {
+    "hours": 8,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
+  },
+  "栗山 冨美|2026-05-28": {
+    "hours": 0.5,
+    "call": 0,
+    "connect": 0,
+    "irai_done": 0,
+    "kaishuu": 0,
+    "mikomi_a": 0,
+    "mikomi_b": 0,
+    "mikomi_c": 0
   }
 };
   for (const [key, val] of Object.entries(SPREADSHEET_ENTRIES)) {
@@ -10795,7 +11704,9 @@ function renderDailyReportInput() {
     const dYear  = parseInt(d.split('-')[0]);
     if (dYear !== year || dMonth !== month) continue;
     const c = cumData[mId];
-    c.hours   += pf(rep.hours);
+    // ★ hours は SPREADSHEET_ENTRIES（管理表Excel）を正本とし、なければ日報値
+    const mgmtH = getMgmtHours(mId, d);
+    c.hours   += mgmtH > 0 ? mgmtH : pf(rep.hours);
     c.call    += pf(rep.call);
     c.connect += pf(rep.connect);
     c.pass    += pf(rep.pass);
@@ -10809,19 +11720,28 @@ function renderDailyReportInput() {
     c.meisai_kaishuu  += pf(rep.meisai_kaishuu);
   }
 
-  // 週次入力データも加算
+  // 週次入力データ（管理表Excel/GSheets）を加算・hours補正
   for (const [key, entry] of Object.entries(state.entries || {})) {
     const [mId, d] = key.split('|');
     if (!cumData[mId]) continue;
     const dMonth = parseInt(d.split('-')[1]);
     const dYear  = parseInt(d.split('-')[0]);
     if (dYear !== year || dMonth !== month) continue;
-    if (state.dailyReports && state.dailyReports[key]) continue;
     const c = cumData[mId];
-    c.hours   += pf(entry.hours);
-    c.call    += pf(entry.call);
-    c.connect += pf(entry.connect);
-    c.meisai_kaishuu += pf(entry.kaishuu);
+    const hasRep = state.dailyReports && state.dailyReports[key];
+    if (hasRep) {
+      // 日報がある日のhours補正はdailyReportsループ側でMGMT_ENTRIESから直接処理済み
+      // call/connect は entry が正本ならそちらで上書き
+      if (entry.call    > 0) { c.call    = c.call    - pf(state.dailyReports[key].call)    + pf(entry.call); }
+      if (entry.connect > 0) { c.connect = c.connect - pf(state.dailyReports[key].connect) + pf(entry.connect); }
+    } else {
+      // 日報がない日：SPREADSHEET_ENTRIESを正本とし、なければentry
+      const mgmtH2 = getMgmtHours(mId, d);
+      c.hours   += mgmtH2 > 0 ? mgmtH2 : pf(entry.hours);
+      c.call    += pf(entry.call);
+      c.connect += pf(entry.connect);
+      c.meisai_kaishuu += pf(entry.kaishuu);
+    }
   }
 
   // 効率計算
