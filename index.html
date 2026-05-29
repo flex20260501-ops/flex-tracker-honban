@@ -2477,6 +2477,7 @@ async function loadState() {
     if (raw) { Object.assign(state, JSON.parse(raw)); }
   } catch(e) { console.warn("loadState error (using defaults):", e); }
   state.firebaseConfig = hardcodedFirebaseConfig; // 常にHTMLの設定を使用
+  injectStaticEntries && injectStaticEntries(); // 管理表時間を再注入
   resetMgmtCache(); // 管理表時間キャッシュをリセット
 
   // 旧バージョンとの互換性: 必要なフィールドが無ければデフォルトを補完
@@ -14537,8 +14538,40 @@ if (typeof escapeHtml !== "function") {
 //   INIT
 // ═══════════════════════════════════════════════════════════
 
+// SPREADSHEET_ENTRIESをstate.entriesにマージ（起動時・Firebase同期後に自動実行）
+function injectStaticEntries() {
+  if (!window.SPREADSHEET_ENTRIES) return;
+  const normalize = s => String(s).replace(/[　\s]+/g, '');
+  // 名前→IDマップ
+  const nameToId = {};
+  (state.members || []).forEach(m => {
+    nameToId[normalize(m.name)] = m.id;
+  });
+  if (Object.keys(nameToId).length === 0) return; // メンバー未ロード時はスキップ
+  let injected = 0;
+  for (const [key, val] of Object.entries(window.SPREADSHEET_ENTRIES)) {
+    const barIdx = key.lastIndexOf('|');
+    if (barIdx < 0) continue;
+    const kName = normalize(key.slice(0, barIdx));
+    const kDate = key.slice(barIdx + 1);
+    const mId   = nameToId[kName];
+    if (!mId || !val.hours) continue;
+    const ek = `${mId}|${kDate}`;
+    // hoursだけ上書き（call/connectはそのまま）
+    if (!state.entries[ek]) state.entries[ek] = {};
+    state.entries[ek].hours = parseFloat(val.hours) || 0;
+    // call/connectはSPREADSHEET_ENTRIESに値があれば補完
+    if (val.call    && !state.entries[ek].call)    state.entries[ek].call    = parseFloat(val.call);
+    if (val.connect && !state.entries[ek].connect) state.entries[ek].connect = parseFloat(val.connect);
+    injected++;
+  }
+  resetMgmtCache(); // キャッシュ更新
+  return injected;
+}
+
 (async () => {
   await loadState();
+  injectStaticEntries(); // ★ 起動時に管理表データを注入
 
   // First-time onboarding hint for non-admin: show a one-time toast about importing
   if (!state._onboardingShown) {
