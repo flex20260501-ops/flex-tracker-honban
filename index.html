@@ -2634,12 +2634,14 @@ function aggregateMonth(memberId, month) {
   const datesFromEntries = new Set();
 
   // ① state.entriesから集計（コール管理表取込）
+  // ★ hours は SPREADSHEET_ENTRIES（管理表）を正本とする
   for (const [key, e] of Object.entries(state.entries || {})) {
     const [mId, date] = key.split("|");
     if (mId !== memberId) continue;
     const m = parseInt(date.split("-")[1]);
     if (m !== month) continue;
-    agg.hours    += pf(e.hours);
+    const mgmtH = getMgmtHours(memberId, date);
+    agg.hours    += mgmtH > 0 ? mgmtH : pf(e.hours);
     agg.call     += pf(e.call);
     agg.connect  += pf(e.connect);
     agg.irai_done+= pf(e.irai_done);
@@ -2662,9 +2664,11 @@ function aggregateMonth(memberId, month) {
     if (mId !== memberId) continue;
     const m = parseInt(date.split("-")[1]);
     if (m !== month) continue;
-    // entriesと重複する日はhours/call/connectのみ優先（entriesが正本）
+    // entriesと重複する日はskip（entriesが正本）
     if (datesFromEntries.has(date)) continue;
-    agg.hours    += pf(rep.hours);
+    // ★ hours は SPREADSHEET_ENTRIES を正本とする
+    const mgmtHr = getMgmtHours(memberId, date);
+    agg.hours    += mgmtHr > 0 ? mgmtHr : pf(rep.hours);
     agg.call     += pf(rep.call);
     agg.connect  += pf(rep.connect);
     agg.irai_done+= pf(rep.irai_done);
