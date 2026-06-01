@@ -2581,36 +2581,12 @@ const _DEFAULT_MEMBER_NAMES = [
   // 追加メンバー（m_20以降は state.members から動的解決）
   "山川　乃曖","栗山　冨美","中岸　美智"
 ];
-// getMgmtHours: SPREADSHEET_ENTRIESから稼働時間を直接取得
-// state.membersに依存せず、毎回メンバー名をリアルタイム解決
-// （state.membersが未ロードの場合もフォールバック付き）
-const _SE_NORM_CACHE = {};  // key → hours のキャッシュ（keyは名前正規化済み|date形式）
-let _SE_NORM_BUILT = false;
-const _NORM = function(s) {
-  return String(s).replace(/[　 ]/g, '');
-};
-function _buildSeNormCache() {
-  const se = window.SPREADSHEET_ENTRIES;
-  if (!se) return;
-  for (const key in se) {
-    const val = se[key];
-    if (!val || parseFloat(val.hours || 0) <= 0) continue;
-    const bar = key.lastIndexOf('|');
-    if (bar < 0) continue;
-    const normKey = _NORM(key.slice(0, bar)) + '|' + key.slice(bar + 1);
-    _SE_NORM_CACHE[normKey] = parseFloat(val.hours);
-  }
-  _SE_NORM_BUILT = true;
-}
+// getMgmtHours: state.entriesのhours（Firebase同期済みの正しい値）を返す
 function getMgmtHours(memberId, dateStr) {
-  if (!_SE_NORM_BUILT) _buildSeNormCache();
-  // memberId → 名前 をリアルタイム解決
-  const member = (state.members || []).find(function(m) { return m.id === memberId; });
-  if (!member || !member.name) return 0;
-  const normKey = _NORM(member.name) + '|' + dateStr;
-  return _SE_NORM_CACHE[normKey] || 0;
+  const e = (state.entries || {})[memberId + '|' + dateStr];
+  return e ? (parseFloat(e.hours) || 0) : 0;
 }
-function resetMgmtCache() { /* SE_NORM_CACHEは静的なのでリセット不要 */ }
+function resetMgmtCache() { /* noop - state.entriesはFirebaseで同期 */ }
 
 
 
@@ -12362,6 +12338,8 @@ async function importCallSheetExcel(file, year, month) {
   });
 
   await saveState();
+  // ★ SPREADSHEET_ENTRIESの稼働時間をFirestoreへ保存（ログアウト後も維持）
+  await injectStaticEntries();
   statusEl.innerHTML = `✅ 取込完了: ${imported}件のデータを反映しました`;
   showToast(`📋 コール管理表 ${month}月 取込完了（${imported}件）`);
   refreshActivePage();
