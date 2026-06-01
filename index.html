@@ -2570,36 +2570,39 @@ function showToast(msg) {
 
 function ekey(memberId, date) { return `${memberId}|${date}`; }
 
-// SPREADSHEET_ENTRIES から管理表稼働時間を直接取得（Firebase同期の影響を受けない）
-// SPREADSHEET_ENTRIES を memberId|date → hours に変換したキャッシュマップ
-// （初回呼び出し時に一度だけ構築）
-let _mgmtHoursCache = null;
-function _buildMgmtCache() {
-  _mgmtHoursCache = {};
-  const members = state.members || [];
-  // 名前→memberId の逆引きマップ
+// ★ STATIC_HOURS: DEFAULT_MEMBERS を使って起動時に確実に構築
+// state.members 未ロードでも動作・Firebase同期の影響を受けない
+const _DEFAULT_MEMBER_NAMES = [
+  "吉田　崇人","佐々木　和輝","谷水　大地","長﨑　拓也",
+  "丸山　直希","石川　裕樹","與座　万葉","石川　善啓",
+  "瀬川　良介","岩崎　なつみ","小西　莉緒奈","相良　亮一",
+  "角谷　晴代","冨岡　大悟","新本　誠","山下　美恵",
+  "大須賀　章乃","本多　真由美","寺口　輝","西村　響太"
+];
+function _buildStaticHours() {
+  const norm = function(s) { return s.replace(/[　\s]+/g, ''); };
   const nameToId = {};
-  members.forEach(m => {
-    const n = m.name.replace(/[　\s]+/g, ' ').trim();
-    nameToId[n] = m.id;
-  });
-  for (const [key, val] of Object.entries(window.SPREADSHEET_ENTRIES || {})) {
-    const barIdx = key.lastIndexOf('|');
-    if (barIdx < 0) continue;
-    const kName = key.slice(0, barIdx).replace(/[　\s]+/g, ' ').trim();
-    const kDate = key.slice(barIdx + 1);
-    const mId   = nameToId[kName];
-    if (mId && val.hours > 0) {
-      _mgmtHoursCache[`${mId}|${kDate}`] = parseFloat(val.hours) || 0;
-    }
+  _DEFAULT_MEMBER_NAMES.forEach(function(n, i) { nameToId[norm(n)] = 'm_' + i; });
+  const map = {};
+  const se = window.SPREADSHEET_ENTRIES || {};
+  for (const key in se) {
+    const val = se[key];
+    if (!val || parseFloat(val.hours || 0) <= 0) continue;
+    const bar = key.lastIndexOf('|');
+    if (bar < 0) continue;
+    const mId = nameToId[norm(key.slice(0, bar))];
+    if (mId) map[mId + '|' + key.slice(bar + 1)] = parseFloat(val.hours);
   }
+  return map;
 }
+const STATIC_HOURS = _buildStaticHours();
 function getMgmtHours(memberId, dateStr) {
-  if (!_mgmtHoursCache) _buildMgmtCache();
-  return _mgmtHoursCache[`${memberId}|${dateStr}`] || 0;
+  return STATIC_HOURS[memberId + '|' + dateStr] || 0;
 }
-// state変更時にキャッシュをリセット
-function resetMgmtCache() { _mgmtHoursCache = null; }
+function resetMgmtCache() { /* STATIC_HOURSは静的のためリセット不要 */ }
+
+
+
 
 function getEntry(memberId, date) {
   return state.entries[ekey(memberId, date)] || {
@@ -2640,8 +2643,8 @@ function aggregateMonth(memberId, month) {
     if (mId !== memberId) continue;
     const m = parseInt(date.split("-")[1]);
     if (m !== month) continue;
-    const mgmtH = getMgmtHours(memberId, date);
-    agg.hours    += mgmtH > 0 ? mgmtH : pf(e.hours);
+    const _sH = getMgmtHours(memberId, date);
+    agg.hours    += _sH > 0 ? _sH : pf(e.hours);
     agg.call     += pf(e.call);
     agg.connect  += pf(e.connect);
     agg.irai_done+= pf(e.irai_done);
@@ -2667,8 +2670,8 @@ function aggregateMonth(memberId, month) {
     // entriesと重複する日はskip（entriesが正本）
     if (datesFromEntries.has(date)) continue;
     // ★ hours は SPREADSHEET_ENTRIES を正本とする
-    const mgmtHr = getMgmtHours(memberId, date);
-    agg.hours    += mgmtHr > 0 ? mgmtHr : pf(rep.hours);
+    const _sHr = getMgmtHours(memberId, date);
+    agg.hours    += _sHr > 0 ? _sHr : pf(rep.hours);
     agg.call     += pf(rep.call);
     agg.connect  += pf(rep.connect);
     agg.irai_done+= pf(rep.irai_done);
