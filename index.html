@@ -2581,44 +2581,42 @@ const _DEFAULT_MEMBER_NAMES = [
   // 追加メンバー（m_20以降は state.members から動的解決）
   "山川　乃曖","栗山　冨美","中岸　美智"
 ];
-// nameToId マップ（state.membersロード後に補完可能）
-let _nameToId = null;
-function _getNameToId() {
-  if (_nameToId) return _nameToId;
-  const norm = function(s) { return String(s).replace(/[　\s]+/g, ''); };
-  _nameToId = {};
-  // デフォルトメンバー（m_0〜m_N）
-  _DEFAULT_MEMBER_NAMES.forEach(function(n, i) { _nameToId[norm(n)] = 'm_' + i; });
-  // state.members が既にロードされていれば上書き補完（新メンバー対応）
-  if (state && state.members && state.members.length > 0) {
-    state.members.forEach(function(m) {
-      if (m.id && m.name) _nameToId[norm(m.name)] = m.id;
-    });
-  }
-  return _nameToId;
-}
-function _buildStaticHours() {
-  const norm = function(s) { return String(s).replace(/[　\s]+/g, ''); };
-  const ntid = _getNameToId();
-  const map = {};
-  const se = window.SPREADSHEET_ENTRIES || {};
+// getMgmtHours: SPREADSHEET_ENTRIESから管理表稼働時間を取得
+// state.members を使って memberId→名前 を解決し、SPREADSHEET_ENTRIESを直接引く
+// キャッシュはリセット可能（Firebase sync後に再構築）
+let _mgmtCache = null;
+function _rebuildMgmtCache() {
+  const norm = function(s) { return String(s).replace(/　| /g, ''); };
+  const cache = {};
+  // memberId → normalized name
+  const idToNorm = {};
+  (state.members || []).forEach(function(m) {
+    if (m.id && m.name) idToNorm[m.id] = norm(m.name);
+  });
+  const se = window.SPREADSHEET_ENTRIES;
+  if (!se) return cache;
   for (const key in se) {
     const val = se[key];
     if (!val || parseFloat(val.hours || 0) <= 0) continue;
     const bar = key.lastIndexOf('|');
     if (bar < 0) continue;
-    const mId = ntid[norm(key.slice(0, bar))];
-    if (mId) map[mId + '|' + key.slice(bar + 1)] = parseFloat(val.hours);
+    const kNorm = norm(key.slice(0, bar));
+    const kDate = key.slice(bar + 1);
+    // idToNorm の逆引き
+    for (const mId in idToNorm) {
+      if (idToNorm[mId] === kNorm) {
+        cache[mId + '|' + kDate] = parseFloat(val.hours);
+        break;
+      }
+    }
   }
-  return map;
+  return cache;
 }
-let _staticHoursCache = null;
 function getMgmtHours(memberId, dateStr) {
-  if (!_staticHoursCache) _staticHoursCache = _buildStaticHours();
-  return _staticHoursCache[memberId + '|' + dateStr] || 0;
+  if (!_mgmtCache) _mgmtCache = _rebuildMgmtCache();
+  return _mgmtCache[memberId + '|' + dateStr] || 0;
 }
-// state.members ロード後に呼ぶ（新メンバーのID解決のため）
-function resetMgmtCache() { _nameToId = null; _staticHoursCache = null; }
+function resetMgmtCache() { _mgmtCache = null; }
 
 
 
