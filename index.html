@@ -3593,9 +3593,13 @@ function renderRanking() {
   };
   document.getElementById("rank-subtitle").textContent = subtitleMap[rankPeriod];
 
-  const active = state.members.filter(m => m.active && m.name);
+  // ★ 期間中在籍メンバー（退職者含む）
+  const rankFromYear = parseInt((range.from||'2026-01').split('-')[0]);
+  const rankFromMonth = parseInt((range.from||'2026-01').split('-')[1]);
+  const active = typeof getMembersForMonth === 'function'
+    ? getMembersForMonth(rankFromYear, rankFromMonth)
+    : state.members.filter(m => m.active && m.name);
 
-  // Aggregate by period
   const rows = active.map(m => {
     const a = aggregatePeriod(m.id, range.from, range.to);
     const seiyaku = a.seiyaku || 0;
@@ -4181,7 +4185,10 @@ function renderMonthly() {
   }
 
   const month = parseInt(sel.value);
-  const active = state.members.filter(m => m.active && m.name);
+  // ★ 当月在籍メンバー（退職者含む）
+  const active = typeof getMembersForMonth === 'function'
+    ? getMembersForMonth(new Date().getFullYear(), month)
+    : state.members.filter(m => m.active && m.name);
 
   // entriesが空ならローディング表示して再試行
   const hasEntries = Object.keys(state.entries || {}).some(k => {
@@ -4650,7 +4657,10 @@ function renderPayroll() {
   }
   
   const month = parseInt(sel.value);
-  const active = state.members.filter(m => m.active && m.name);
+  // ★ 当月在籍メンバー（退職者含む）
+  const active = typeof getMembersForMonth === 'function'
+    ? getMembersForMonth(new Date().getFullYear(), month)
+    : state.members.filter(m => m.active && m.name);
   
   let html = `<div class="table-card"><div class="table-scroll"><table>
     <tr class="group-hd">
@@ -13883,11 +13893,15 @@ function renderPeriodCumulative() {
 
   document.getElementById("period-subtitle").textContent = `// ${from} 〜 ${to}`;
 
-  const active = state.members.filter(m => m.active && m.name);
+  // ★ 期間中に在籍していたメンバー（退職者含む）を取得
+  const fromYear = parseInt(from.split('-')[0]), fromMonth = parseInt(from.split('-')[1]);
+  const periodMembers = typeof getMembersForMonth === 'function'
+    ? getMembersForMonth(fromYear, fromMonth)
+    : state.members.filter(m => m.active && m.name);
   let total = {hours:0, call:0, connect:0, seiyaku:0, seiyaku_dentou:0, dentou_plan:0, meisai_kaishuu:0, pass:0, maekaku_ok:0};
   let workDays = 0;
 
-  active.forEach(m => {
+  periodMembers.forEach(m => {
     const a = aggregatePeriod(m.id, from, to);
     for (const k of Object.keys(total)) total[k] += parseFloat(a[k] || 0) || 0;
     workDays = Math.max(workDays, a.days);
@@ -13918,7 +13932,7 @@ function renderPeriodCumulative() {
   `).join("");
 
   // Table
-  const rows = active.map(m => {
+  const rows = periodMembers.map(m => {
     const a = aggregatePeriod(m.id, from, to);
     return {m, a};
   }).filter(x => x.a.hours > 0)
