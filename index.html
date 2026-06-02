@@ -2666,7 +2666,8 @@ function aggregateMonth(memberId, month) {
   const agg = {
     hours:0, call:0, connect:0, irai_done:0, kaishuu:0,
     mikomi_a:0, mikomi_b:0, mikomi_c:0, irai_kazu:0,
-    haru_ok:0, haru_ng:0, other_ok:0, other_ng:0, ng:0
+    haru_ok:0, haru_ng:0, other_ok:0, other_ng:0, ng:0,
+    score:0, days:0, seiyaku:0, seiyaku_dentou:0, dentou_plan:0, pass:0, maekaku_ok:0
   };
   const pf = v => parseFloat(v) || 0;
   const counted = new Set(); // 処理済み日付
@@ -4279,7 +4280,7 @@ function renderMonthly() {
       <td>${a.haru_ok}</td><td>${a.haru_ng}</td>
       <td>${a.other_ok}</td><td>${a.other_ng}</td>
       <td>${a.ng}</td>
-      <td style="color:var(--accent);font-weight:700;">${a.score.toFixed(0)}</td>
+      <td style="color:var(--accent);font-weight:700;">${(a.score||0).toFixed(0)}</td>
     </tr>`;
   });
 
@@ -4303,7 +4304,7 @@ function renderMonthly() {
     <td>${total.haru_ok}</td><td>${total.haru_ng}</td>
     <td>${total.other_ok}</td><td>${total.other_ng}</td>
     <td>${total.ng}</td>
-    <td>${total.score.toFixed(0)}</td>
+    <td>${(total.score||0).toFixed(0)}</td>
   </tr>`;
 
   html += `</table></div></div>`;
