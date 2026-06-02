@@ -4222,22 +4222,23 @@ function renderMonthly() {
   }
 
   const month = parseInt(sel.value);
-  // ★ 当月在籍メンバー（退職者含む）
+  const el = document.getElementById("monthly-content") || document.querySelector("#page-monthly .table-card");
+
+  // state.members が未ロードなら待機（Firebase同期待ち）
+  if (!state.members || state.members.length === 0) {
+    if (el) el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text-mute);">☁️ メンバー読込中...</div>`;
+    setTimeout(() => renderMonthly(), 800);
+    return;
+  }
+
+  // ★ 当月在籍メンバー（退職者含む）を取得
   const active = typeof getMembersForMonth === 'function'
     ? getMembersForMonth(new Date().getFullYear(), month)
     : state.members.filter(m => m.active && m.name);
 
-  // _MGMT_MAPかstate.entriesかstate.dailyReportsにデータがあればOK
-  const hasEntries = true; // _MGMT_MAPは常に存在するため常にtrue
-
-  const el = document.getElementById("monthly-content") || document.querySelector("#page-monthly .table-card");
-
-  if (active.length === 0) {
-    if (el) el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text-mute);">☁️ メンバー読込中...</div>`;
-    setTimeout(() => renderMonthly(), 1500);
-    return;
-  }
-  const rows = active.map(m => ({m, a: aggregateMonth(m.id, month)}));
+  // activeが0でも state.members があるなら全員で表示
+  const displayMembers = active.length > 0 ? active : state.members.filter(m => m.name);
+  const rows = displayMembers.map(m => ({m, a: aggregateMonth(m.id, month)}));
 
   let html = `<div class="table-card"><div class="table-scroll"><table>
     <tr class="group-hd">
@@ -11920,168 +11921,6 @@ function renderDailyReportInput() {
 
   html += '</tbody></table></div>';
 
-  // ─── 累計集計テーブル ───
-  const month = parseInt(date.split('-')[1]);
-  const year = parseInt(date.split('-')[0]);
-
-  // 当月の日報データを全日付分集計（日報入力済み + 週次入力も加算）
-  const cumData = {};
-  members.forEach(m => { cumData[m.id] = {hours:0,call:0,connect:0,pass:0,maekaku_ok:0,goukaku_ok:0,dentou_plan:0,douryoku:0,seiyaku:0,seiyaku_dentou:0,seiyaku_douryoku:0,meisai_kaishuu:0}; });
-  const pf = v => parseFloat(v) || 0; // 文字列も確実に数値変換
-
-  // 日報入力データ
-  for (const [key, rep] of Object.entries(state.dailyReports || {})) {
-    const [mId, d] = key.split('|');
-    if (!cumData[mId]) continue;
-    const dMonth = parseInt(d.split('-')[1]);
-    const dYear  = parseInt(d.split('-')[0]);
-    if (dYear !== year || dMonth !== month) continue;
-    const c = cumData[mId];
-    // ★ hours は SPREADSHEET_ENTRIES（管理表Excel）を正本とし、なければ日報値
-    const mgmtH = getMgmtHours(mId, d);
-    c.hours   += mgmtH > 0 ? mgmtH : pf(rep.hours);
-    c.call    += pf(rep.call);
-    c.connect += pf(rep.connect);
-    c.pass    += pf(rep.pass);
-    c.maekaku_ok  += pf(rep.maekaku_ok);
-    c.goukaku_ok  += pf(rep.goukaku_ok);
-    c.dentou_plan += pf(rep.dentou_plan);
-    c.douryoku    += pf(rep.douryoku);
-    c.seiyaku     += pf(rep.seiyaku);
-    c.seiyaku_dentou  += pf(rep.seiyaku_dentou);
-    c.seiyaku_douryoku+= pf(rep.seiyaku_douryoku);
-    c.meisai_kaishuu  += pf(rep.meisai_kaishuu);
-  }
-
-  // 週次入力データ（管理表Excel/GSheets）を加算・hours補正
-  for (const [key, entry] of Object.entries(state.entries || {})) {
-    const [mId, d] = key.split('|');
-    if (!cumData[mId]) continue;
-    const dMonth = parseInt(d.split('-')[1]);
-    const dYear  = parseInt(d.split('-')[0]);
-    if (dYear !== year || dMonth !== month) continue;
-    const c = cumData[mId];
-    const hasRep = state.dailyReports && state.dailyReports[key];
-    if (hasRep) {
-      // 日報がある日のhours補正はdailyReportsループ側でMGMT_ENTRIESから直接処理済み
-      // call/connect は entry が正本ならそちらで上書き
-      if (entry.call    > 0) { c.call    = c.call    - pf(state.dailyReports[key].call)    + pf(entry.call); }
-      if (entry.connect > 0) { c.connect = c.connect - pf(state.dailyReports[key].connect) + pf(entry.connect); }
-    } else {
-      // 日報がない日：SPREADSHEET_ENTRIESを正本とし、なければentry
-      const mgmtH2 = getMgmtHours(mId, d);
-      c.hours   += mgmtH2 > 0 ? mgmtH2 : pf(entry.hours);
-      c.call    += pf(entry.call);
-      c.connect += pf(entry.connect);
-      c.meisai_kaishuu += pf(entry.kaishuu);
-    }
-  }
-
-  // 効率計算
-  function booth(h) { return h / 8; }
-  function eff(val, h) { return h > 0 ? (val / booth(h)).toFixed(3) : '—'; }
-
-  // douryoku と seiyaku_douryoku を統合（どちらに入っていても合算）
-  members.forEach(m => {
-    const c = cumData[m.id];
-    c.total_douryoku = (c.douryoku || 0) + (c.seiyaku_douryoku || 0);
-  });
-
-  const CUM_COLS = [
-    {label:'稼働h',      fn:c=>c.hours.toFixed(1)},
-    {label:'ブース数',   fn:c=>booth(c.hours).toFixed(2)},
-    {label:'コール数',   fn:c=>c.call},
-    {label:'コネクト数', fn:c=>c.connect},
-    {label:'コネクト率', fn:c=>c.call>0?((c.connect/c.call)*100).toFixed(1)+'%':'—'},
-    {label:'パス数',     fn:c=>c.pass},
-    {label:'前確OK',     fn:c=>c.maekaku_ok},
-    {label:'後確OK',     fn:c=>c.goukaku_ok},
-    {label:'電灯プラン', fn:c=>c.dentou_plan},
-    {label:'実績動力',   fn:c=>c.seiyaku_douryoku||0},
-    {label:'成約社数',   fn:c=>c.seiyaku,   bold:true, color:'var(--accent)'},
-    {label:'実績電灯',   fn:c=>c.seiyaku_dentou, bold:true},
-    {label:'社数効率',   fn:c=>eff(c.seiyaku, c.hours),        color:'#f59e0b', bold:true},
-    {label:'電灯効率',   fn:c=>eff(c.seiyaku_dentou, c.hours), color:'#ec4899', bold:true},
-    {label:'P効率(電+動)',fn:c=>eff((c.seiyaku_dentou||0)+(c.seiyaku_douryoku||0), c.hours), color:'#e879f9', bold:true},
-  ];
-
-  // チーム合計行
-  const teamCum = {hours:0,call:0,connect:0,pass:0,maekaku_ok:0,goukaku_ok:0,dentou_plan:0,douryoku:0,seiyaku:0,seiyaku_dentou:0,seiyaku_douryoku:0};
-  members.forEach(m => {
-    const c = cumData[m.id];
-    for (const k of Object.keys(teamCum)) teamCum[k] += c[k] || 0;
-  });
-
-  html += `
-  <div style="margin-top:20px;">
-    <div style="font-weight:800;font-size:14px;margin-bottom:10px;display:flex;align-items:center;gap:10px;">
-      📊 ${year}年${month}月 累計集計
-      <span style="font-size:11px;font-weight:400;color:var(--text-mute);font-family:'JetBrains Mono',monospace;">// 日報入力データから自動計算</span>
-    </div>
-    <div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
-    <table style="width:100%;border-collapse:collapse;font-size:11px;">
-      <thead>
-        <tr>
-          <th rowspan="2" style="padding:10px 12px;text-align:left;background:#1B3A6B;color:#fff;white-space:nowrap;position:sticky;left:0;border-right:2px solid rgba(255,255,255,0.2);">名前</th>
-          <th colspan="5" style="padding:6px;text-align:center;background:#1e40af;color:#fff;font-size:10px;border-right:1px solid rgba(255,255,255,0.15);">稼働・コール</th>
-          <th colspan="3" style="padding:6px;text-align:center;background:#1d4ed8;color:#fff;font-size:10px;border-right:1px solid rgba(255,255,255,0.15);">パス・前後確</th>
-          <th colspan="2" style="padding:6px;text-align:center;background:#166534;color:#fff;font-size:10px;border-right:1px solid rgba(255,255,255,0.15);">プラン</th>
-          <th colspan="2" style="padding:6px;text-align:center;background:#1e1b4b;color:#fff;font-size:10px;border-right:1px solid rgba(255,255,255,0.15);">実績</th>
-          <th colspan="3" style="padding:6px;text-align:center;background:#713f12;color:#fff;font-size:10px;">効率</th>
-        </tr>
-        <tr>
-          ${['稼働h','ブース','コール','コネクト','コネクト率','パス','前確OK','後確OK','電灯P','動力P','成約社数','実績電灯','社数効率','電灯効率','P効率(電+動)']
-            .map((l,i) => `<th style="padding:7px 4px;text-align:center;white-space:nowrap;font-size:10px;background:#0f172a;color:#94a3b8;border-right:1px solid rgba(255,255,255,0.06);">${l}</th>`)
-            .join('')}
-        </tr>
-      </thead>
-      <tbody>`;
-
-  members.forEach((mem, idx) => {
-    const c = cumData[mem.id];
-    const bg = idx % 2 === 0 ? '#fff' : '#f8fafc';
-    const effColor = (v) => v > 0 ? (v >= 0.4 ? '#8b5cf6' : '#d97706') : '#94a3b8';
-    html += `<tr style="background:${bg};">
-      <td style="padding:6px 12px;font-weight:700;white-space:nowrap;position:sticky;left:0;background:${bg};border-right:2px solid #e2e8f0;color:#1e293b;">${mem.name}</td>
-      <td style="padding:6px 3px;text-align:center;border-right:1px solid #f1f5f9;font-family:'JetBrains Mono',monospace;">${c.hours.toFixed(1)}</td>
-      <td style="padding:6px 3px;text-align:center;border-right:1px solid #f1f5f9;font-family:'JetBrains Mono',monospace;">${booth(c.hours).toFixed(2)}</td>
-      <td style="padding:6px 3px;text-align:center;border-right:1px solid #f1f5f9;font-family:'JetBrains Mono',monospace;">${c.call}</td>
-      <td style="padding:6px 3px;text-align:center;border-right:1px solid #f1f5f9;font-family:'JetBrains Mono',monospace;">${c.connect}</td>
-      <td style="padding:6px 3px;text-align:center;border-right:1px solid #e2e8f0;font-family:'JetBrains Mono',monospace;">${c.call>0?((c.connect/c.call)*100).toFixed(1)+'%':'—'}</td>
-      <td style="padding:6px 3px;text-align:center;border-right:1px solid #f1f5f9;font-family:'JetBrains Mono',monospace;">${c.pass}</td>
-      <td style="padding:6px 3px;text-align:center;border-right:1px solid #f1f5f9;font-family:'JetBrains Mono',monospace;">${c.maekaku_ok}</td>
-      <td style="padding:6px 3px;text-align:center;border-right:1px solid #e2e8f0;font-family:'JetBrains Mono',monospace;">${c.goukaku_ok}</td>
-      <td style="padding:6px 3px;text-align:center;border-right:1px solid #f1f5f9;font-family:'JetBrains Mono',monospace;">${c.dentou_plan}</td>
-      <td style="padding:6px 3px;text-align:center;border-right:1px solid #e2e8f0;font-family:'JetBrains Mono',monospace;">${c.seiyaku_douryoku||0}</td>
-      <td style="padding:6px 3px;text-align:center;border-right:1px solid #f1f5f9;font-family:'JetBrains Mono',monospace;font-weight:700;color:#1e40af;">${c.seiyaku}</td>
-      <td style="padding:6px 3px;text-align:center;border-right:1px solid #e2e8f0;font-family:'JetBrains Mono',monospace;font-weight:700;color:#1e40af;">${c.seiyaku_dentou}</td>
-      <td style="padding:6px 3px;text-align:center;border-right:1px solid #f1f5f9;font-family:'JetBrains Mono',monospace;font-weight:700;color:${effColor(eff(c.seiyaku,c.hours))};">${eff(c.seiyaku,c.hours)}</td>
-      <td style="padding:6px 3px;text-align:center;border-right:1px solid #f1f5f9;font-family:'JetBrains Mono',monospace;font-weight:700;color:${effColor(eff(c.seiyaku_dentou,c.hours))};">${eff(c.seiyaku_dentou,c.hours)}</td>
-      <td style="padding:6px 3px;text-align:center;font-family:'JetBrains Mono',monospace;font-weight:700;color:${effColor(eff((c.seiyaku_dentou||0)+(c.douryoku||0)+(c.seiyaku_douryoku||0),c.hours))};">${eff((c.seiyaku_dentou||0)+(c.seiyaku_douryoku||0),c.hours)}</td>
-    </tr>`;
-  });
-
-  // チーム合計行
-  html += `<tr style="background:#1B3A6B;font-weight:800;">
-    <td style="padding:8px 12px;white-space:nowrap;position:sticky;left:0;background:#1B3A6B;color:#fff;border-right:2px solid rgba(255,255,255,0.2);">チーム合計</td>
-    <td style="padding:8px 3px;text-align:center;color:#fff;font-family:'JetBrains Mono',monospace;border-right:1px solid rgba(255,255,255,0.1);">${teamCum.hours.toFixed(1)}</td>
-    <td style="padding:8px 3px;text-align:center;color:#fff;font-family:'JetBrains Mono',monospace;border-right:1px solid rgba(255,255,255,0.1);">${booth(teamCum.hours).toFixed(2)}</td>
-    <td style="padding:8px 3px;text-align:center;color:#fff;font-family:'JetBrains Mono',monospace;border-right:1px solid rgba(255,255,255,0.1);">${teamCum.call}</td>
-    <td style="padding:8px 3px;text-align:center;color:#fff;font-family:'JetBrains Mono',monospace;border-right:1px solid rgba(255,255,255,0.1);">${teamCum.connect}</td>
-    <td style="padding:8px 3px;text-align:center;color:#fff;font-family:'JetBrains Mono',monospace;border-right:1px solid rgba(255,255,255,0.2);">${teamCum.call>0?((teamCum.connect/teamCum.call)*100).toFixed(1)+'%':'—'}</td>
-    <td style="padding:8px 3px;text-align:center;color:#fff;font-family:'JetBrains Mono',monospace;border-right:1px solid rgba(255,255,255,0.1);">${teamCum.pass}</td>
-    <td style="padding:8px 3px;text-align:center;color:#fff;font-family:'JetBrains Mono',monospace;border-right:1px solid rgba(255,255,255,0.1);">${teamCum.maekaku_ok}</td>
-    <td style="padding:8px 3px;text-align:center;color:#fff;font-family:'JetBrains Mono',monospace;border-right:1px solid rgba(255,255,255,0.2);">${teamCum.goukaku_ok}</td>
-    <td style="padding:8px 3px;text-align:center;color:#fff;font-family:'JetBrains Mono',monospace;border-right:1px solid rgba(255,255,255,0.1);">${teamCum.dentou_plan}</td>
-    <td style="padding:8px 3px;text-align:center;color:#fff;font-family:'JetBrains Mono',monospace;border-right:1px solid rgba(255,255,255,0.2);">${teamCum.seiyaku_douryoku||0}</td>
-    <td style="padding:8px 3px;text-align:center;color:#fbbf24;font-family:'JetBrains Mono',monospace;border-right:1px solid rgba(255,255,255,0.1);">${teamCum.seiyaku}</td>
-    <td style="padding:8px 3px;text-align:center;color:#fbbf24;font-family:'JetBrains Mono',monospace;border-right:1px solid rgba(255,255,255,0.2);">${teamCum.seiyaku_dentou}</td>
-    <td style="padding:8px 3px;text-align:center;color:#6ee7b7;font-family:'JetBrains Mono',monospace;border-right:1px solid rgba(255,255,255,0.1);">${eff(teamCum.seiyaku,teamCum.hours)}</td>
-    <td style="padding:8px 3px;text-align:center;color:#6ee7b7;font-family:'JetBrains Mono',monospace;border-right:1px solid rgba(255,255,255,0.1);">${eff(teamCum.seiyaku_dentou,teamCum.hours)}</td>
-    <td style="padding:8px 3px;text-align:center;color:#6ee7b7;font-family:'JetBrains Mono',monospace;">${eff((teamCum.seiyaku_dentou||0)+(teamCum.seiyaku_douryoku||0),teamCum.hours)}</td>
-  </tr>`;
-
-  html += `</tbody></table></div></div>`;
 
   // ─── チームOP入力欄 ───
   const teamOpVal = (state.teamOp && state.teamOp[date]) !== undefined ? (state.teamOp[date] || '') : '';
