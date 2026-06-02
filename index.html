@@ -12228,7 +12228,7 @@ function getMembersForMonth(year, month) {
 const CALL_SHEET_URLS = {
   "2026-04": "1kq42E2DMKsNk6aayWJ8cdokDaQPUMcwN",
   "2026-05": "1AWaa5xqWttf5smFLH47V-hOUjf6oQ6qK0DJeU9XisFw",
-  "2026-06": "1ZCekAgtUcBKsJUKYNgX2yuqHEUz7ArCMsUyg7ZPYhm4",
+  "2026-06": "11spx-9MjNta-DyYCdZMIRIE7-7O5gBSKRRKIsEEXvHk",
   "2026-07": "1MffwGrkuvWFfjhbD-1DAeCyvwG27bEJTFPUVZEuZDDI",
   "2026-08": "1hLdHol3d5pAQfx9A0rX5Ucjap3Lmcrj5vlnficolaBo",
   "2026-09": "1aguiVGReV5-N4e5vzfUykvSGj456-mBwAYKrYnTDre0",
@@ -12248,86 +12248,17 @@ async function importCallSheetFromGSheets(year, month) {
   const statusEl = document.getElementById("call-sheet-status");
   statusEl.innerHTML = "⏳ Googleスプシからデータを取得中...";
 
-  // Google Sheets API v4（公開設定なら認証不要でJSON取得可能）
-  // ただし直接fetch可能なのはgviz/tqエンドポイント
-  // → xlsx export に CORS ヘッダーが付いていないので直接DLは失敗する
-  // → 代わりに gviz/tq でCSV取得し、シートごとに取込む
-  statusEl.innerHTML = "⏳ Googleスプレッドシートからデータ取得中...";
+  // Google Sheets → xlsx export → importCallSheetExcel（元々動いていた方式）
+  const exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx`;
   try {
-    // まず週次シート名の一覧を取得（gid不明なのでシート名で試行）
-    const weekSheets = ["1週目", "2週目", "3週目", "4週目", "5週目"];
-    let totalImported = 0;
-
-    for (const weekName of weekSheets) {
-      const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(weekName + "(" + (month===6?"6_":"") + "")}`;
-      // gviz/tq はCORSを許可している
-      try {
-        const csvResp = await fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(weekName)}`);
-        if (!csvResp.ok) continue;
-        const csvText = await csvResp.text();
-        if (!csvText || csvText.length < 10) continue;
-        // CSVをパースしてstate.entriesに反映
-        const lines = csvText.split("\n").map(l => l.replace(/^"|"$/g, "").split('","'));
-        let curMemberId = null;
-        let inData = false;
-        const memberMap = {};
-        (state.members || []).forEach(m => {
-          if (m.name) memberMap[m.name.replace(/[\s\u3000]/g, "")] = m.id;
-        });
-        for (const cols of lines) {
-          const col0 = (cols[0] || "").replace(/"/g, "").trim();
-          if (col0.startsWith("■")) {
-            const nm = col0.replace("■","").trim().replace(/[\s\u3000]/g, "");
-            curMemberId = memberMap[nm] || null;
-            inData = false;
-            continue;
-          }
-          if (col0 === "日付") { inData = true; continue; }
-          if (col0.includes("合計") || col0.includes("合　計")) { inData = false; continue; }
-          if (!inData || !curMemberId) continue;
-          const dm = col0.match(/(\d+)\/(\d+)/);
-          if (!dm) continue;
-          const rowMonth = parseInt(dm[1]);
-          const rowDay   = parseInt(dm[2]);
-          if (rowMonth !== month) continue;
-          const hours = parseFloat(cols[1]) || 0;
-          const call  = parseFloat(cols[2]) || 0;
-          if (hours === 0 && call === 0) continue;
-          const dateStr = `${year}-${String(rowMonth).padStart(2,"0")}-${String(rowDay).padStart(2,"0")}`;
-          const ekey = `${curMemberId}|${dateStr}`;
-          state.entries[ekey] = {
-            hours, call,
-            connect:   parseFloat(cols[4])  || 0,
-            irai_done: parseFloat(cols[5])  || 0,
-            kaishuu:   parseFloat(cols[6])  || 0,
-            mikomi_a:  parseFloat(cols[8])  || 0,
-            mikomi_b:  parseFloat(cols[9])  || 0,
-            mikomi_c:  parseFloat(cols[10]) || 0,
-            irai_kazu: parseFloat(cols[11]) || 0,
-            haru_ok:   parseFloat(cols[13]) || 0,
-            haru_ng:   parseFloat(cols[14]) || 0,
-            other_ok:  parseFloat(cols[15]) || 0,
-            other_ng:  parseFloat(cols[16]) || 0,
-            ng:        parseFloat(cols[17]) || 0,
-          };
-          totalImported++;
-        }
-      } catch(e2) { console.warn("シート取得失敗:", weekName, e2); }
-    }
-
-    if (totalImported > 0) {
-      await saveState();
-      statusEl.innerHTML = `✅ 取込完了: ${totalImported}件のデータを反映しました`;
-      showToast(`📋 コール管理表 ${month}月 取込完了（${totalImported}件）`);
-      refreshActivePage();
-    } else {
-      // フォールバック: Excelを手動DLするよう案内
-      statusEl.innerHTML = `⚠️ 自動取得できませんでした。<a href="https://docs.google.com/spreadsheets/d/${sheetId}/export?format=xlsx" target="_blank">こちらからExcelをDL</a>してドロップしてください`;
-    }
+    const resp = await fetch(exportUrl);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const buf = await resp.arrayBuffer();
+    const file = new File([new Blob([buf])], `${key}_コール管理表.xlsx`);
+    await importCallSheetExcel(file, year, month);
   } catch(e) {
-    statusEl.innerHTML = `❌ 取込失敗: ${e.message}`;
-    showToast("❌ 取込失敗: " + e.message);
-    console.error(e);
+    console.warn('スプシ直接取込失敗:', e.message);
+    statusEl.innerHTML = `⚠️ 自動取得できませんでした。<a href="${exportUrl}" target="_blank" style="color:var(--accent);font-weight:700;">こちらからExcelをDL</a>してドロップしてください`;
   }
 }
 
