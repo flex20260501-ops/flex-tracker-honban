@@ -2604,12 +2604,35 @@ const _MGMT_MAP = (function() {
   }
   return map;
 }());
+// normNameをキャッシュ（state.members変更時にリセット）
+const _idToNormName = {};
+function _getIdToNormName() {
+  // state.membersが変わったら再構築
+  if (Object.keys(_idToNormName).length === 0 && state.members && state.members.length > 0) {
+    state.members.forEach(function(m) {
+      if (m.id && m.name) _idToNormName[m.id] = m.name.replace(/[\u3000 ]/g, '');
+    });
+  }
+  return _idToNormName;
+}
 function getMgmtHours(memberId, dateStr) {
-  const member = (state.members || []).find(function(m) { return m.id === memberId; });
-  if (!member || !member.name) return 0;
-  const normName = member.name.replace(/[　 ]/g, '');
+  const idMap = _getIdToNormName();
+  const normName = idMap[memberId];
+  if (!normName) {
+    // フォールバック: state.membersを直接検索
+    const member = (state.members || []).find(function(m) { return m.id === memberId; });
+    if (!member || !member.name) return 0;
+    const nn = member.name.replace(/[\u3000 ]/g, '');
+    _idToNormName[memberId] = nn;
+    const byDate = _MGMT_MAP[nn];
+    return byDate ? (byDate[dateStr] || 0) : 0;
+  }
   const byDate = _MGMT_MAP[normName];
   return byDate ? (byDate[dateStr] || 0) : 0;
+}
+function resetMgmtCache() {
+  // state.members更新時にidToNormNameをリセット
+  Object.keys(_idToNormName).forEach(function(k) { delete _idToNormName[k]; });
 }
 function resetMgmtCache() { /* _MGMT_MAPは定数のためリセット不要 */ }
 
@@ -2649,9 +2672,12 @@ function aggregateMonth(memberId, month) {
   const counted = new Set(); // 処理済み日付
 
   // ① _MGMT_MAP（SPREADSHEET_ENTRIES）から hours を優先的に加算
-  const member = (state.members || []).find(function(m) { return m.id === memberId; });
-  if (member && member.name) {
-    const normName = member.name.replace(/[　 ]/g, '');
+  const normNameM = (function() {
+    const m = (state.members || []).find(function(m) { return m.id === memberId; });
+    return m && m.name ? m.name.replace(/[　 ]/g, '') : null;
+  }());
+  if (normNameM) {
+    const normName = normNameM;
     const byDate = _MGMT_MAP[normName] || {};
     for (const date in byDate) {
       if (parseInt(date.split('-')[1]) !== month) continue;
@@ -4188,6 +4214,7 @@ function updateEntryCalcRow(memberId, date) {
 
 function renderMonthly() {
   const sel = document.getElementById("monthly-month-select");
+  if (!sel) { setTimeout(renderMonthly, 500); return; }
   if (!sel.innerHTML) {
     for (let m = 1; m <= 12; m++) sel.innerHTML += `<option value="${m}">${m}月</option>`;
     sel.value = state.currentMonth;
