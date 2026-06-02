@@ -2646,64 +2646,62 @@ function aggregateMonth(memberId, month) {
     haru_ok:0, haru_ng:0, other_ok:0, other_ng:0, ng:0
   };
   const pf = v => parseFloat(v) || 0;
-  const datesFromEntries = new Set();
+  const counted = new Set(); // 処理済み日付
 
-  // ① state.entriesから集計（コール管理表取込）
-  // ★ hours は SPREADSHEET_ENTRIES（管理表）を正本とする
+  // ① _MGMT_MAP（SPREADSHEET_ENTRIES）から hours を優先的に加算
+  const member = (state.members || []).find(function(m) { return m.id === memberId; });
+  if (member && member.name) {
+    const normName = member.name.replace(/[　 ]/g, '');
+    const byDate = _MGMT_MAP[normName] || {};
+    for (const date in byDate) {
+      if (parseInt(date.split('-')[1]) !== month) continue;
+      agg.hours += byDate[date];
+      counted.add(date);
+    }
+  }
+
+  // ② state.entries から call/connect 等を加算（hoursはMGMT_MAPで補完済みの日はスキップ）
   for (const [key, e] of Object.entries(state.entries || {})) {
-    const [mId, date] = key.split("|");
+    const [mId, date] = key.split('|');
     if (mId !== memberId) continue;
-    const m = parseInt(date.split("-")[1]);
-    if (m !== month) continue;
-    const _sH = getMgmtHours(memberId, date);
-    agg.hours    += _sH > 0 ? _sH : pf(e.hours);
-    agg.call     += pf(e.call);
-    agg.connect  += pf(e.connect);
-    agg.irai_done+= pf(e.irai_done);
-    agg.kaishuu  += pf(e.kaishuu);
-    agg.mikomi_a += pf(e.mikomi_a);
-    agg.mikomi_b += pf(e.mikomi_b);
-    agg.mikomi_c += pf(e.mikomi_c);
-    agg.irai_kazu+= pf(e.irai_kazu);
-    agg.haru_ok  += pf(e.haru_ok);
-    agg.haru_ng  += pf(e.haru_ng);
-    agg.other_ok += pf(e.other_ok);
-    agg.other_ng += pf(e.other_ng);
-    agg.ng       += pf(e.ng);
-    datesFromEntries.add(date);
+    if (parseInt(date.split('-')[1]) !== month) continue;
+    if (!counted.has(date)) {
+      agg.hours += pf(e.hours);
+      counted.add(date);
+    }
+    agg.call      += pf(e.call);
+    agg.connect   += pf(e.connect);
+    agg.irai_done += pf(e.irai_done);
+    agg.kaishuu   += pf(e.kaishuu);
+    agg.mikomi_a  += pf(e.mikomi_a);
+    agg.mikomi_b  += pf(e.mikomi_b);
+    agg.mikomi_c  += pf(e.mikomi_c);
+    agg.irai_kazu += pf(e.irai_kazu || 0);
+    agg.haru_ok   += pf(e.haru_ok   || 0);
+    agg.haru_ng   += pf(e.haru_ng   || 0);
+    agg.other_ok  += pf(e.other_ok  || 0);
+    agg.other_ng  += pf(e.other_ng  || 0);
+    agg.ng        += pf(e.ng        || 0);
   }
 
-  // ② state.dailyReportsから集計（日報入力データ）
+  // ③ state.dailyReports から残りの指標を加算
   for (const [key, rep] of Object.entries(state.dailyReports || {})) {
-    const [mId, date] = key.split("|");
+    const [mId, date] = key.split('|');
     if (mId !== memberId) continue;
-    const m = parseInt(date.split("-")[1]);
-    if (m !== month) continue;
-    // entriesと重複する日はskip（entriesが正本）
-    if (datesFromEntries.has(date)) continue;
-    // ★ hours は SPREADSHEET_ENTRIES を正本とする
-    const _sHr = getMgmtHours(memberId, date);
-    agg.hours    += _sHr > 0 ? _sHr : pf(rep.hours);
-    agg.call     += pf(rep.call);
-    agg.connect  += pf(rep.connect);
-    agg.irai_done+= pf(rep.irai_done);
-    agg.kaishuu  += pf(rep.kaishuu || rep.meisai_kaishuu);
-    agg.mikomi_a += pf(rep.mikomi_a);
-    agg.mikomi_b += pf(rep.mikomi_b);
-    agg.mikomi_c += pf(rep.mikomi_c);
-    agg.irai_kazu+= pf(rep.irai_kazu);
-    agg.haru_ok  += pf(rep.haru_ok);
-    agg.haru_ng  += pf(rep.haru_ng);
-    agg.other_ok += pf(rep.other_ok);
-    agg.other_ng += pf(rep.other_ng);
-    agg.ng       += pf(rep.ng);
+    if (parseInt(date.split('-')[1]) !== month) continue;
+    if (!counted.has(date)) {
+      agg.hours += getMgmtHours(memberId, date) || pf(rep.hours);
+      counted.add(date);
+    }
+    agg.maekaku_ok  = (agg.maekaku_ok  || 0) + pf(rep.maekaku_ok);
+    agg.goukaku_ok  = (agg.goukaku_ok  || 0) + pf(rep.goukaku_ok);
+    agg.seiyaku     = (agg.seiyaku     || 0) + pf(rep.seiyaku);
+    agg.dentou_plan = (agg.dentou_plan || 0) + pf(rep.dentou_plan || rep.seiyaku_dentou || 0);
+    agg.seiyaku_dentou = (agg.seiyaku_dentou || 0) + pf(rep.seiyaku_dentou || rep.dentou_plan || 0);
+    agg.douryoku    = (agg.douryoku    || 0) + pf(rep.douryoku || 0);
+    agg.pass        = (agg.pass        || 0) + pf(rep.pass || 0);
+    agg.cxl         = (agg.cxl         || 0) + pf(rep.cxl || 0);
   }
-
-  for (const k of Object.keys(agg)) { if (typeof agg[k] !== "number" || isNaN(agg[k])) agg[k] = 0; }
-  agg.callperhour = agg.hours > 0 ? agg.call / agg.hours : 0;
-  agg.kouritsu = agg.hours > 0 ? agg.kaishuu / agg.hours : 0;
-  agg.iriritsu = agg.connect > 0 ? agg.irai_kazu / agg.connect : 0;
-  agg.score = agg.kaishuu * (state.weights?.kaishuu||1) + agg.irai_kazu * (state.weights?.irai||1) + agg.connect * (state.weights?.connect||0.1);
   return agg;
 }
 
@@ -2736,10 +2734,10 @@ document.querySelectorAll(".nav-item").forEach(it => {
       const raw = localStorage.getItem("tracker-state");
       if (raw) {
         const parsed = JSON.parse(raw);
-        const keep = { firebaseConfig: state.firebaseConfig, pin: state.pin };
+        // entries/dailyReportsはローカルキャッシュで補完するが、pinはFirebaseを正本とする
         if (parsed.entries) state.entries = parsed.entries;
         if (parsed.dailyReports) state.dailyReports = parsed.dailyReports;
-        Object.assign(state, keep);
+        // firebaseConfig のみローカル優先、他はFirebase同期済みstateを使う
       }
     } catch(e) {}
     document.querySelectorAll(".nav-item").forEach(n => n.classList.remove("active"));
@@ -4202,11 +4200,8 @@ function renderMonthly() {
     ? getMembersForMonth(new Date().getFullYear(), month)
     : state.members.filter(m => m.active && m.name);
 
-  // entriesが空ならローディング表示して再試行
-  const hasEntries = Object.keys(state.entries || {}).some(k => {
-    const [,d] = k.split("|");
-    return d && parseInt(d.split("-")[1]) === month;
-  });
+  // _MGMT_MAPかstate.entriesかstate.dailyReportsにデータがあればOK
+  const hasEntries = true; // _MGMT_MAPは常に存在するため常にtrue
 
   const el = document.getElementById("monthly-content") || document.querySelector("#page-monthly .table-card");
 
@@ -5433,21 +5428,32 @@ function aggregateMonthFromReports(memberId, month) {
     datesWithReport.add(date);
     agg.days++;
   }
-  // dailyReportsにない日でentriesにあるデータも集計（週次スプシのみの日）
+  // _MGMT_MAPをベースに全日付を走査（dailyReports・entries双方にない日もカバー）
+  const member4r = (state.members || []).find(function(m) { return m.id === memberId; });
+  if (member4r && member4r.name) {
+    const n4 = member4r.name.replace(/[　 ]/g, '');
+    const bd4 = _MGMT_MAP[n4] || {};
+    for (const date in bd4) {
+      if (parseInt(date.split('-')[1]) !== month) continue;
+      if (!datesWithReport.has(date)) {
+        // dailyReportがない日: _MGMT_MAPからhours、state.entriesからcall/connect
+        const ent = getEntry(memberId, date);
+        agg.hours   += bd4[date];
+        agg.call    += parseFloat(ent.call    || 0);
+        agg.connect += parseFloat(ent.connect || 0);
+        agg.meisai_kaishuu += parseFloat(ent.kaishuu || 0);
+        agg.days++;
+      }
+    }
+  }
+  // dailyReportsにある日のentries（kaishuu補完用）
   for (const [key, entry] of Object.entries(state.entries || {})) {
     const [mId, date] = key.split("|");
     if (mId !== memberId) continue;
     if (parseInt(date.split("-")[1]) !== month) continue;
     if (datesWithReport.has(date)) {
       agg.meisai_kaishuu += parseFloat(entry.kaishuu || 0);
-      continue;
     }
-    if (!entry.hours && !entry.call) continue;
-    agg.hours   += parseFloat(entry.hours   || 0);
-    agg.call    += parseFloat(entry.call    || 0);
-    agg.connect += parseFloat(entry.connect || 0);
-    agg.meisai_kaishuu += parseFloat(entry.kaishuu || 0);
-    agg.days++;
   }
   for (const k of Object.keys(agg)) { if (typeof agg[k] !== "number" || isNaN(agg[k])) agg[k] = 0; }
   // CXL除算（1回のみ）
