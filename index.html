@@ -2581,18 +2581,46 @@ const _DEFAULT_MEMBER_NAMES = [
   // 追加メンバー（m_20以降は state.members から動的解決）
   "山川　乃曖","栗山　冨美","中岸　美智"
 ];
-// ══ 稼働時間マップ（SPREADSHEET_ENTRIESから構築、遅延初期化）══
-// ※ SPREADSHEET_ENTRIESはHTMLに静的埋め込み（line ~5500）のため
-//    スクリプト起動直後ではなく、初回描画時（SE定義後）に構築する
-let _mgmtMapBuilt = false;
-const _mgmtByName = {}; // { "谷水大地": { "2026-05-01": 8, ... }, ... }
+// ══ 稼働時間取得（SPREADSHEET_ENTRIESから直接参照）══
+// キャッシュなし・依存なし・常に正確
+function _normName(s) {
+  return String(s).replace(/　/g, '').replace(/ /g, '');
+}
 
-function _buildMgmtMap() {
-  if (_mgmtMapBuilt) return;
-  _mgmtMapBuilt = true;
+function getMgmtHours(memberId, dateStr) {
   const se = window.SPREADSHEET_ENTRIES;
-  if (!se) return;
-  const norm = function(s) { return String(s).replace(/[\u3000 ]/g, ''); };
+  if (!se) return 0;
+  const m = (state.members || []).find(function(x) { return x.id === memberId; });
+  if (!m || !m.name) return 0;
+  const nn = _normName(m.name);
+  // SEキーは "石川 裕樹|2026-05-29" (半角スペース)
+  // nnは "石川裕樹" (スペースなし)
+  // → SEのキー名部分を正規化して比較
+  const lookupKey = nn + '|' + dateStr;
+  // 直接キー探索（SEキー名正規化済みマップを使う）
+  return (_getSeMap()[lookupKey] || 0);
+}
+
+function getMgmtDatesByName(normName) {
+  const seMap = _getSeMap();
+  const result = {};
+  for (const key in seMap) {
+    const bar = key.lastIndexOf('|');
+    if (bar < 0) continue;
+    if (key.slice(0, bar) === normName) {
+      result[key.slice(bar + 1)] = seMap[key];
+    }
+  }
+  return result;
+}
+
+// SEの正規化済みマップ（初回のみ構築）
+let _seMapCache = null;
+function _getSeMap() {
+  if (_seMapCache) return _seMapCache;
+  _seMapCache = {};
+  const se = window.SPREADSHEET_ENTRIES;
+  if (!se) return _seMapCache;
   for (const key in se) {
     const val = se[key];
     if (!val) continue;
@@ -2600,39 +2628,14 @@ function _buildMgmtMap() {
     if (!(h > 0)) continue;
     const bar = key.lastIndexOf('|');
     if (bar < 0) continue;
-    const nn   = norm(key.slice(0, bar));
-    const date = key.slice(bar + 1);
-    if (!_mgmtByName[nn]) _mgmtByName[nn] = {};
-    _mgmtByName[nn][date] = h;
+    // キー: 正規化名|date
+    const normKey = _normName(key.slice(0, bar)) + '|' + key.slice(bar + 1);
+    _seMapCache[normKey] = h;
   }
+  return _seMapCache;
 }
 
-// getMgmtHours: memberId + date → 管理表稼働時間（0 if not found）
-function getMgmtHours(memberId, dateStr) {
-  _buildMgmtMap();
-  const m = (state.members || []).find(function(x) { return x.id === memberId; });
-  if (!m || !m.name) return 0;
-  const nn = m.name.replace(/[\u3000 ]/g, '');
-  const byDate = _mgmtByName[nn];
-  return byDate ? (byDate[dateStr] || 0) : 0;
-}
-
-// getMgmtHoursByName: 名前直接指定版（aggregateMonthから使用）
-function getMgmtHoursByName(normName, dateStr) {
-  _buildMgmtMap();
-  const byDate = _mgmtByName[normName];
-  return byDate ? (byDate[dateStr] || 0) : 0;
-}
-
-// getMgmtDatesByName: メンバーの管理表登録日付一覧を返す
-function getMgmtDatesByName(normName) {
-  _buildMgmtMap();
-  return _mgmtByName[normName] || {};
-}
-
-function resetMgmtCache() {
-  // state.members変更時のidキャッシュはないため不要
-}
+function resetMgmtCache() { /* SE静的定数のためリセット不要 */ }
 
 
 
@@ -2661,6 +2664,7 @@ function setEntryField(memberId, date, field, value) {
 // ═══════════════════════════════════════════════════════════
 
 function aggregateMonth(memberId, month) {
+  const year = new Date().getFullYear(); // 当年
   const agg = {
     hours:0, call:0, connect:0, irai_done:0, kaishuu:0,
     mikomi_a:0, mikomi_b:0, mikomi_c:0, irai_kazu:0,
@@ -2670,15 +2674,26 @@ function aggregateMonth(memberId, month) {
   const pf = v => parseFloat(v) || 0;
   const counted = new Set(); // 処理済み日付
 
-  // ① 管理表マップから hours を優先的に加算
+  // ① SPREADSHEET_ENTRIESから直接hoursを加算（関数呼び出しなし）
   const mForAgg = (state.members || []).find(function(m) { return m.id === memberId; });
-  const normNameM = mForAgg && mForAgg.name ? mForAgg.name.replace(/[　 ]/g, '') : null;
-  if (normNameM) {
-    const byDate = getMgmtDatesByName(normNameM);
-    for (const date in byDate) {
-      if (parseInt(date.split('-')[1]) !== month) continue;
-      agg.hours += byDate[date];
-      counted.add(date);
+  if (mForAgg && mForAgg.name) {
+    const nn = mForAgg.name.replace(/　/g, '').replace(/ /g, '');
+    const seAll = window.SPREADSHEET_ENTRIES || {};
+    for (const seKey in seAll) {
+      const bar = seKey.lastIndexOf('|');
+      if (bar < 0) continue;
+      const seDate = seKey.slice(bar + 1);
+      if (parseInt(seDate.split('-')[1]) !== month) continue;
+      if (parseInt(seDate.split('-')[0]) !== new Date().getFullYear()) {
+        // 年も確認（4月5月等の月被りを防ぐ）
+        if (parseInt(seDate.split('-')[0]) !== year) continue;
+      }
+      const seName = seKey.slice(0, bar).replace(/　/g, '').replace(/ /g, '');
+      if (seName !== nn) continue;
+      const seH = parseFloat((seAll[seKey] || {}).hours || 0);
+      if (seH <= 0) continue;
+      agg.hours += seH;
+      counted.add(seDate);
     }
   }
 
