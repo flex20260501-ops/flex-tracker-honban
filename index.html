@@ -4228,10 +4228,12 @@ function renderMonthly() {
     : state.members.filter(m => m.active && m.name);
 
   // entriesが空ならローディング表示して再試行
-  const hasEntries = Object.keys(state.entries || {}).some(k => {
-    const [,d] = k.split("|");
-    return d && parseInt(d.split("-")[1]) === month;
-  });
+  // _MGMT_MAPに当月データがあれば常に表示可能
+  const hasEntries = Object.keys(_MGMT_MAP).length > 0 ||
+    Object.keys(state.entries || {}).some(k => {
+      const [,d] = k.split("|");
+      return d && parseInt(d.split("-")[1]) === month;
+    });
 
   const el = document.getElementById("monthly-content") || document.querySelector("#page-monthly .table-card");
 
@@ -4266,22 +4268,27 @@ function renderMonthly() {
 
   rows.forEach(r => {
     const a = r.a;
+    // 派生値を計算（aggregateMonthが返さない場合も対応）
+    const cph  = a.hours > 0 ? a.call / a.hours : 0;
+    const kour = a.hours > 0 ? a.kaishuu / a.hours : 0;
+    const irr  = a.connect > 0 ? a.irai_kazu / a.connect : 0;
+    const sc   = typeof a.score === 'number' ? a.score : 0;
     html += `<tr>
       <td class="name-cell">${memberNameWithAvatar(r.m, {showBadges:false})}</td>
-      <td>${a.hours.toFixed(1)}</td>
+      <td>${(a.hours||0).toFixed(1)}</td>
       <td>${parseFloat(a.call)||0}</td>
-      <td>${a.call > 0 ? a.callperhour.toFixed(1) : ''}</td>
-      <td>${a.connect}</td>
-      <td>${a.irai_done}</td>
-      <td>${a.kaishuu}</td>
-      <td>${a.hours > 0 ? a.kouritsu.toFixed(2) : ''}</td>
-      <td>${a.mikomi_a}</td><td>${a.mikomi_b}</td><td>${a.mikomi_c}</td>
-      <td>${a.irai_kazu}</td>
-      <td>${a.connect > 0 ? (a.iriritsu*100).toFixed(1)+'%' : ''}</td>
-      <td>${a.haru_ok}</td><td>${a.haru_ng}</td>
-      <td>${a.other_ok}</td><td>${a.other_ng}</td>
-      <td>${a.ng}</td>
-      <td style="color:var(--accent);font-weight:700;">${a.score.toFixed(0)}</td>
+      <td>${a.hours > 0 ? cph.toFixed(1) : ''}</td>
+      <td>${a.connect||0}</td>
+      <td>${a.irai_done||0}</td>
+      <td>${a.kaishuu||0}</td>
+      <td>${a.hours > 0 ? kour.toFixed(2) : ''}</td>
+      <td>${a.mikomi_a||0}</td><td>${a.mikomi_b||0}</td><td>${a.mikomi_c||0}</td>
+      <td>${a.irai_kazu||0}</td>
+      <td>${a.connect > 0 ? (irr*100).toFixed(1)+'%' : ''}</td>
+      <td>${a.haru_ok||0}</td><td>${a.haru_ng||0}</td>
+      <td>${a.other_ok||0}</td><td>${a.other_ng||0}</td>
+      <td>${a.ng||0}</td>
+      <td style="color:var(--accent);font-weight:700;">${sc.toFixed(0)}</td>
     </tr>`;
   });
 
@@ -4290,22 +4297,23 @@ function renderMonthly() {
     for (const k in r.a) acc[k] = (acc[k]||0) + r.a[k];
     return acc;
   }, {});
+  const th = total.hours||0, tc = total.call||0, tcon = total.connect||0;
   html += `<tr class="total">
     <td class="name-cell">チーム合計</td>
-    <td>${total.hours.toFixed(1)}</td>
-    <td>${total.call}</td>
-    <td>${total.hours > 0 ? (total.call/total.hours).toFixed(1) : ''}</td>
-    <td>${total.connect}</td>
-    <td>${total.irai_done}</td>
-    <td>${total.kaishuu}</td>
-    <td>${total.hours > 0 ? (total.kaishuu/total.hours).toFixed(2) : ''}</td>
-    <td>${total.mikomi_a}</td><td>${total.mikomi_b}</td><td>${total.mikomi_c}</td>
-    <td>${total.irai_kazu}</td>
-    <td>${total.connect > 0 ? ((total.irai_kazu/total.connect)*100).toFixed(1)+'%' : ''}</td>
-    <td>${total.haru_ok}</td><td>${total.haru_ng}</td>
-    <td>${total.other_ok}</td><td>${total.other_ng}</td>
-    <td>${total.ng}</td>
-    <td>${total.score.toFixed(0)}</td>
+    <td>${th.toFixed(1)}</td>
+    <td>${tc}</td>
+    <td>${th > 0 ? (tc/th).toFixed(1) : ''}</td>
+    <td>${tcon}</td>
+    <td>${total.irai_done||0}</td>
+    <td>${total.kaishuu||0}</td>
+    <td>${th > 0 ? ((total.kaishuu||0)/th).toFixed(2) : ''}</td>
+    <td>${total.mikomi_a||0}</td><td>${total.mikomi_b||0}</td><td>${total.mikomi_c||0}</td>
+    <td>${total.irai_kazu||0}</td>
+    <td>${tcon > 0 ? (((total.irai_kazu||0)/tcon)*100).toFixed(1)+'%' : ''}</td>
+    <td>${total.haru_ok||0}</td><td>${total.haru_ng||0}</td>
+    <td>${total.other_ok||0}</td><td>${total.other_ng||0}</td>
+    <td>${total.ng||0}</td>
+    <td>${(total.score||0).toFixed(0)}</td>
   </tr>`;
 
   html += `</table></div></div>`;
