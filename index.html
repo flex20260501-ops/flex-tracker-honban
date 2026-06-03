@@ -2581,60 +2581,46 @@ const _DEFAULT_MEMBER_NAMES = [
   // 追加メンバー（m_20以降は state.members から動的解決）
   "山川　乃曖","栗山　冨美","中岸　美智"
 ];
-// getMgmtHours: SPREADSHEET_ENTRIESから直接引く（Firebase/state.entries無関係）
-// キャッシュは起動時に一度だけ構築。member.nameで引く。
-const _MGMT_MAP = (function() {
-  const map = {};
+// getMgmtHours: SPREADSHEET_ENTRIESから稼働時間を取得（遅延初期化）
+// SPREADSHEET_ENTRIESはHTMLに静的埋め込み済み → Firebase/state.entries完全独立
+let _MGMT_MAP_CACHE = null;
+function _getMgmtMap() {
+  if (_MGMT_MAP_CACHE) return _MGMT_MAP_CACHE;
+  _MGMT_MAP_CACHE = {};
   const se = window.SPREADSHEET_ENTRIES;
-  if (!se) return map;
-  const norm = function(s) {
-    // 全角スペース・半角スペースを除去して比較
-    return String(s).replace(/[　 ]/g, '');
-  };
+  if (!se) return _MGMT_MAP_CACHE;
   for (const key in se) {
     const val = se[key];
     if (!val || !(parseFloat(val.hours) > 0)) continue;
     const bar = key.lastIndexOf('|');
     if (bar < 0) continue;
-    // キー: 正規化済み名前 + '|' + date
-    const normName = norm(key.slice(0, bar));
+    const nn = key.slice(0, bar).replace(/[　 ]/g, '');
     const date = key.slice(bar + 1);
-    if (!map[normName]) map[normName] = {};
-    map[normName][date] = parseFloat(val.hours);
+    if (!_MGMT_MAP_CACHE[nn]) _MGMT_MAP_CACHE[nn] = {};
+    _MGMT_MAP_CACHE[nn][date] = parseFloat(val.hours);
   }
-  return map;
-}());
-// normNameをキャッシュ（state.members変更時にリセット）
-const _idToNormName = {};
-function _getIdToNormName() {
-  // state.membersが変わったら再構築
-  if (Object.keys(_idToNormName).length === 0 && state.members && state.members.length > 0) {
-    state.members.forEach(function(m) {
-      if (m.id && m.name) _idToNormName[m.id] = m.name.replace(/[\u3000 ]/g, '');
-    });
-  }
-  return _idToNormName;
+  return _MGMT_MAP_CACHE;
 }
+// _MGMT_MAP: 既存コードを変更せず透過アクセス
+const _MGMT_MAP = new Proxy({}, {
+  get: (_, p) => _getMgmtMap()[p],
+  has: (_, p) => p in _getMgmtMap(),
+  ownKeys: () => Object.keys(_getMgmtMap()),
+  getOwnPropertyDescriptor: (_, p) => Object.getOwnPropertyDescriptor(_getMgmtMap(), p)
+});
+const _idToNormName = {};
 function getMgmtHours(memberId, dateStr) {
-  const idMap = _getIdToNormName();
-  const normName = idMap[memberId];
-  if (!normName) {
-    // フォールバック: state.membersを直接検索
-    const member = (state.members || []).find(function(m) { return m.id === memberId; });
-    if (!member || !member.name) return 0;
-    const nn = member.name.replace(/[\u3000 ]/g, '');
-    _idToNormName[memberId] = nn;
-    const byDate = _MGMT_MAP[nn];
-    return byDate ? (byDate[dateStr] || 0) : 0;
+  if (!_idToNormName[memberId]) {
+    const m = (state.members || []).find(m => m.id === memberId);
+    if (!m || !m.name) return 0;
+    _idToNormName[memberId] = m.name.replace(/[　 ]/g, '');
   }
-  const byDate = _MGMT_MAP[normName];
+  const byDate = _getMgmtMap()[_idToNormName[memberId]];
   return byDate ? (byDate[dateStr] || 0) : 0;
 }
 function resetMgmtCache() {
-  // state.members更新時にidToNormNameをリセット
-  Object.keys(_idToNormName).forEach(function(k) { delete _idToNormName[k]; });
+  Object.keys(_idToNormName).forEach(k => delete _idToNormName[k]);
 }
-function resetMgmtCache() { /* _MGMT_MAPは定数のためリセット不要 */ }
 
 
 
