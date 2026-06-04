@@ -2084,6 +2084,23 @@
             <button class="danger" onclick="resetAllData()">全データリセット</button>
           </div>
           <input type="file" id="import-input" accept=".json" style="display:none;" onchange="importData(event)">
+
+          <!-- ★ 管理表時間の強制書込ボタン -->
+          <div style="background:linear-gradient(135deg,#fef3c7,#fde68a);border:2px solid #f59e0b;border-radius:10px;padding:16px;margin-top:12px;">
+            <div style="font-weight:800;font-size:14px;color:#92400e;margin-bottom:6px;">⚡ 管理表稼働時間をFirebaseに強制書込</div>
+            <div style="font-size:12px;color:#78350f;margin-bottom:12px;line-height:1.6;">
+              SPREADSHEET_ENTRIESの正しい稼働時間を全端末のFirebaseに書き込みます。<br>
+              再ログイン後に時間がズレる場合は、一度このボタンを押してください。
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;">
+              <button id="force-push-btn" style="background:#f59e0b;color:white;border:none;padding:10px 20px;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px;"
+                onclick="runForcePush()">
+                🔒 稼働時間をFirebaseに書込む
+              </button>
+              <div id="force-push-status" style="font-size:12px;color:#78350f;"></div>
+            </div>
+          </div>
+
           <p style="color:var(--text-dim);font-size:12px;margin-top:12px;">
             ※ バックアップは定期的にJSONで書き出してください。ブラウザデータが消えるとデータも消失します。
           </p>
@@ -2547,6 +2564,57 @@ async function saveStateLocal() {
   }
 }
 
+
+// ═══════════════════════════════════════════════════════════
+//   管理表時間 → Firebase 強制書込
+// ═══════════════════════════════════════════════════════════
+async function forcePushMgmtHoursToFirebase(onProgress) {
+  const se = window.SPREADSHEET_ENTRIES;
+  if (!se) { alert('SPREADSHEET_ENTRIESが見つかりません'); return 0; }
+  if (!firestoreDb || !currentRole) { alert('Firebaseに接続されていません'); return 0; }
+
+  const col = (state.firebaseConfig && state.firebaseConfig.collectionName) || 'shared';
+  const norm = s => String(s).replace(/　/g, '').replace(/ /g, '');
+
+  // 名前→memberIdマップを構築
+  const nameToId = {};
+  (state.members || []).forEach(m => {
+    if (m.id && m.name) nameToId[norm(m.name)] = m.id;
+  });
+
+  let pushed = 0, skipped = 0;
+  const entries = Object.entries(se);
+  for (let i = 0; i < entries.length; i++) {
+    const [key, val] = entries[i];
+    if (!val || !val.hours || parseFloat(val.hours) <= 0) continue;
+    const bar = key.lastIndexOf('|');
+    if (bar < 0) continue;
+    const mId = nameToId[norm(key.slice(0, bar))];
+    const date = key.slice(bar + 1);
+    if (!mId) { skipped++; continue; }
+
+    // state.entries にも反映
+    const ek = mId + '|' + date;
+    if (!state.entries[ek]) state.entries[ek] = {};
+    state.entries[ek].hours = parseFloat(val.hours);
+
+    // Firebase shared_entries に保存
+    try {
+      const entry = state.entries[ek];
+      await window._fbSetDoc(
+        window._fbDoc(firestoreDb, col + '_entries', mId + '_' + date.replace(/-/g,'_')),
+        { memberId: mId, date, ...entry,
+          updatedAt: window._fbServerTimestamp(),
+          updatedBy: 'MGMT_FORCE_PUSH' }
+      );
+      pushed++;
+    } catch(e) { console.warn('push error:', key, e.message); }
+
+    if (onProgress && i % 20 === 0) onProgress(i, entries.length, pushed);
+  }
+  return { pushed, skipped };
+}
+
 async function saveState() {
   await saveStateLocal();
   // If Firestore is configured and we're admin, push update
@@ -2674,26 +2742,40 @@ function aggregateMonth(memberId, month) {
   const pf = v => parseFloat(v) || 0;
   const counted = new Set(); // 処理済み日付
 
-  // ① SPREADSHEET_ENTRIESから直接hoursを加算（関数呼び出しなし）
+  // ① 稼働時間の加算：state.entries(Firebase由来) と SPREADSHEET_ENTRIES の両方を使用
+  // 優先順位: Firebase shared_entries → SPREADSHEET_ENTRIES静的データ
   const mForAgg = (state.members || []).find(function(m) { return m.id === memberId; });
-  if (mForAgg && mForAgg.name) {
-    const nn = mForAgg.name.replace(/　/g, '').replace(/ /g, '');
-    const seAll = window.SPREADSHEET_ENTRIES || {};
+  const nn4agg = mForAgg && mForAgg.name ? mForAgg.name.replace(/　/g,'').replace(/ /g,'') : null;
+  const seAll = window.SPREADSHEET_ENTRIES || {};
+
+  // SEから当月のこのメンバーの全日付を収集
+  const seDateHours = {}; // date → hours (SEから)
+  if (nn4agg) {
     for (const seKey in seAll) {
       const bar = seKey.lastIndexOf('|');
       if (bar < 0) continue;
-      const seDate = seKey.slice(bar + 1);
+      const seDate = seKey.slice(bar+1);
+      if (parseInt(seDate.split('-')[0]) !== year) continue;
       if (parseInt(seDate.split('-')[1]) !== month) continue;
-      if (parseInt(seDate.split('-')[0]) !== new Date().getFullYear()) {
-        // 年も確認（4月5月等の月被りを防ぐ）
-        if (parseInt(seDate.split('-')[0]) !== year) continue;
-      }
-      const seName = seKey.slice(0, bar).replace(/　/g, '').replace(/ /g, '');
-      if (seName !== nn) continue;
-      const seH = parseFloat((seAll[seKey] || {}).hours || 0);
-      if (seH <= 0) continue;
-      agg.hours += seH;
-      counted.add(seDate);
+      const seName = seKey.slice(0,bar).replace(/　/g,'').replace(/ /g,'');
+      if (seName !== nn4agg) continue;
+      const seH = parseFloat((seAll[seKey]||{}).hours||0);
+      if (seH > 0) seDateHours[seDate] = seH;
+    }
+  }
+
+  // Firebase state.entries.hours を優先、なければ SE を使用
+  const allDates = new Set([
+    ...Object.keys(seDateHours),
+    ...Object.keys(state.entries||{}).filter(k => k.startsWith(memberId+'|')).map(k => k.split('|')[1]).filter(d => parseInt(d.split('-')[0])===year && parseInt(d.split('-')[1])===month)
+  ]);
+  for (const d of allDates) {
+    const fbH = parseFloat(((state.entries||{})[memberId+'|'+d]||{}).hours||0);
+    const seH = seDateHours[d] || 0;
+    const h = fbH > 0 ? fbH : seH; // Firebase優先
+    if (h > 0) {
+      agg.hours += h;
+      counted.add(d);
     }
   }
 
@@ -4542,6 +4624,25 @@ function renderAdminLock() {
   } else {
     document.getElementById("admin-lock-screen").style.display = "block";
     document.getElementById("admin-content").style.display = "none";
+  }
+}
+
+
+async function runForcePush() {
+  const btn = document.getElementById('force-push-btn');
+  const status = document.getElementById('force-push-status');
+  if (btn) btn.disabled = true;
+  if (status) status.textContent = '⏳ 書込み中...';
+  try {
+    const result = await forcePushMgmtHoursToFirebase(function(i, total, pushed) {
+      if (status) status.textContent = `⏳ ${i}/${total}件処理中（${pushed}件保存）`;
+    });
+    if (status) status.textContent = `✅ 完了: ${result.pushed}件保存（スキップ: ${result.skipped}件）`;
+    showToast(`✅ 稼働時間 ${result.pushed}件をFirebaseに書込みました`);
+  } catch(e) {
+    if (status) status.textContent = `❌ エラー: ${e.message}`;
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 
