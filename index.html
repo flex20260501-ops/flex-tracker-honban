@@ -11980,32 +11980,129 @@ async function importCallSheetExcel(file, year, month) {
 }
 
 // イベント設定（page-daily-import表示時）
+function renderDailyImport() {
+  const today = new Date().toISOString().slice(0,10);
+  const dateInput = document.getElementById("import-date");
+  if (dateInput && !dateInput.value) dateInput.value = today;
+
+  // 月セレクタを動的生成（年次対応）
+  const year = new Date().getFullYear();
+  const archiveSel = document.getElementById("archive-import-month");
+  if (archiveSel && !archiveSel.innerHTML.trim()) {
+    let opts = '';
+    for (let y = year - 1; y <= year + 1; y++) {
+      for (let m = 1; m <= 12; m++) {
+        opts += `<option value="${m}" data-year="${y}" ${y===year&&m===new Date().getMonth()+1?'selected':''}>${y}年${m}月</option>`;
+      }
+    }
+    archiveSel.innerHTML = opts;
+  }
+
+  // 月次一括取込の月・年セレクタ
+  const bulkMonth = document.getElementById("unified-bulk-month");
+  const bulkYear = document.getElementById("unified-bulk-year");
+  if (bulkMonth && !bulkMonth.innerHTML.trim()) {
+    for (let m = 1; m <= 12; m++) bulkMonth.innerHTML += `<option value="${m}" ${m===new Date().getMonth()+1?'selected':''}>${m}月</option>`;
+  }
+  if (bulkYear && !bulkYear.innerHTML.trim()) {
+    for (let y = year - 1; y <= year + 1; y++) bulkYear.innerHTML += `<option value="${y}" ${y===year?'selected':''}>${y}年</option>`;
+  }
+
+  // 月次一括ドロップゾーン
+  const bulkDropzone = document.getElementById("unified-bulk-dropzone");
+  if (bulkDropzone && !bulkDropzone._initialized) {
+    bulkDropzone._initialized = true;
+    const bulkFile = document.getElementById("unified-bulk-file");
+    bulkFile.onchange = async () => {
+      const file = bulkFile.files[0];
+      if (!file) return;
+      const month = parseInt(document.getElementById("unified-bulk-month").value);
+      const yr = parseInt(document.getElementById("unified-bulk-year").value);
+      const statusEl = document.getElementById("unified-bulk-status");
+      statusEl.innerHTML = "⏳ 月次取込中...";
+      await importMonthlyExcel(file, yr, month, statusEl);
+    };
+    bulkDropzone.addEventListener("dragover", e => { e.preventDefault(); bulkDropzone.classList.add("drag-over"); });
+    bulkDropzone.addEventListener("dragleave", () => bulkDropzone.classList.remove("drag-over"));
+    bulkDropzone.addEventListener("drop", async e => {
+      e.preventDefault(); bulkDropzone.classList.remove("drag-over");
+      const file = e.dataTransfer.files[0];
+      if (!file) return;
+      const month = parseInt(document.getElementById("unified-bulk-month").value);
+      const yr = parseInt(document.getElementById("unified-bulk-year").value);
+      const statusEl = document.getElementById("unified-bulk-status");
+      await importMonthlyExcel(file, yr, month, statusEl);
+    });
+  }
+
+  // 月別リセットのセレクタ初期化
+  const resetYear = document.getElementById("reset-month-year");
+  const resetMonthSel = document.getElementById("reset-month-month");
+  if (resetYear && !resetYear.innerHTML.trim()) {
+    for (let y = year - 1; y <= year + 1; y++) resetYear.innerHTML += `<option value="${y}" ${y===year?'selected':''}>${y}年</option>`;
+  }
+  if (resetMonthSel && !resetMonthSel.innerHTML.trim()) {
+    for (let m = 1; m <= 12; m++) resetMonthSel.innerHTML += `<option value="${m}" ${m===new Date().getMonth()+1?'selected':''}>${m}月</option>`;
+  }
+  const updateResetPreview = () => {
+    if (!resetYear || !resetMonthSel) return;
+    const y = resetYear.value;
+    const m = String(resetMonthSel.value).padStart(2,"0");
+    const mKey = `${y}-${m}`;
+    const cnt = Object.keys(state.dailyReports || {}).filter(k => k.includes(`|${mKey}-`)).length;
+    const prevEl = document.getElementById("reset-month-preview");
+    if (prevEl) prevEl.innerHTML = cnt > 0
+      ? `<span style="color:var(--danger);">⚠️ ${y}年${parseInt(m)}月のデータ：${cnt} 件が存在します</span>`
+      : `<span style="color:var(--success);">✅ ${y}年${parseInt(m)}月のデータはありません</span>`;
+  };
+  if (resetYear) { resetYear.onchange = updateResetPreview; }
+  if (resetMonthSel) { resetMonthSel.onchange = updateResetPreview; }
+  updateResetPreview();
+
+  renderImportedReports();
+  renderHourAlerts();
+}
+
+
 function initCallSheetDropzone() {
   const input = document.getElementById("call-sheet-file");
   const dropzone = document.getElementById("call-sheet-dropzone");
   if (!input || dropzone._initialized) return;
   dropzone._initialized = true;
 
-  // セレクト初期化
+  // セレクト初期化（コール管理表 & 月次Excel & 日報Excel共通）
   const now = new Date();
+  const curYear = now.getFullYear();
+  const curMonth = now.getMonth() + 1;
+  const years = [2025, 2026, 2027];
+
+  // 全プルダウンに年月を設定
+  ['call-sheet-year','unified-bulk-year','reset-month-year'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (sel && !sel.options.length) {
+      years.forEach(y => {
+        const o = document.createElement("option");
+        o.value = y; o.text = y+"年";
+        if (y === curYear) o.selected = true;
+        sel.appendChild(o);
+      });
+    }
+  });
+  ['call-sheet-month','unified-bulk-month'].forEach(id => {
+    const sel = document.getElementById(id);
+    if (sel && !sel.options.length) {
+      for (let m = 1; m <= 12; m++) {
+        const o = document.createElement("option");
+        o.value = m; o.text = m+"月";
+        if (m === curMonth) o.selected = true;
+        sel.appendChild(o);
+      }
+    }
+  });
+
+  // 旧個別初期化（互換性維持）
   const yearSel = document.getElementById("call-sheet-year");
   const monthSel = document.getElementById("call-sheet-month");
-  if (yearSel && !yearSel.options.length) {
-    [2025,2026,2027].forEach(y => {
-      const o = document.createElement("option");
-      o.value = y; o.text = y+"年";
-      if (y === now.getFullYear()) o.selected = true;
-      yearSel.appendChild(o);
-    });
-  }
-  if (monthSel && !monthSel.options.length) {
-    for (let m = 1; m <= 12; m++) {
-      const o = document.createElement("option");
-      o.value = m; o.text = m+"月";
-      if (m === now.getMonth()+1) o.selected = true;
-      monthSel.appendChild(o);
-    }
-  }
 
   input.addEventListener("change", async () => {
     const file = input.files[0];
