@@ -4237,24 +4237,26 @@ function renderMonthly() {
     ? getMembersForMonth(new Date().getFullYear(), month)
     : state.members.filter(m => m.active && m.name);
 
-  // entriesが空ならローディング表示して再試行
-  // _MGMT_MAPに当月データがあれば常に表示可能
-  // 管理表マップまたはstate.entriesにデータがあれば表示
-  _buildMgmtMap();
-  const hasEntries = Object.keys(_mgmtByName).length > 0 ||
-    Object.keys(state.entries || {}).some(k => {
-      const [,d] = k.split("|");
-      return d && parseInt(d.split("-")[1]) === month;
-    });
+  // データチェック省略（_getSeMapで常に表示可能）
 
   const el = document.getElementById("monthly-content") || document.querySelector("#page-monthly .table-card");
 
-  if (active.length === 0) {
+  // state.membersが空なら待機、あれば何らかの形で表示
+  if (!state.members || state.members.length === 0) {
     if (el) el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text-mute);">☁️ メンバー読込中...</div>`;
-    setTimeout(() => renderMonthly(), 1500);
+    setTimeout(() => renderMonthly(), 800);
     return;
   }
-  const rows = active.map(m => ({m, a: aggregateMonth(m.id, month)}));
+  // getMembersForMonthが空を返した場合は全メンバーにフォールバック
+  const displayList = active.length > 0
+    ? active
+    : state.members.filter(function(m) { return m && m.name; });
+  if (displayList.length === 0) {
+    if (el) el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text-mute);">☁️ メンバー読込中...</div>`;
+    setTimeout(() => renderMonthly(), 800);
+    return;
+  }
+  const rows = displayList.map(m => ({m, a: aggregateMonth(m.id, month)}));
 
   let html = `<div class="table-card"><div class="table-scroll"><table>
     <tr class="group-hd">
@@ -12073,6 +12075,8 @@ function updateTeamOp(date, value) {
   if (!state.teamOp) state.teamOp = {};
   state.teamOp[date] = parseFloat(value) || 0;
   saveStateLocal();
+  // Firebase即時同期（他端末にリアルタイム反映）
+  if (typeof schedulePushToFirestore === 'function') schedulePushToFirestore();
   const members2 = (state.members || []).filter(m => m.active && m.name);
   const ts = members2.reduce((sum, m) => sum + (parseFloat(((state.dailyReports||{})[m.id+'|'+date]||{}).seiyaku)||0), 0);
   const rate = ts > 0 ? (state.teamOp[date]/ts*100).toFixed(1)+'%' : '—';
