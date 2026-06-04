@@ -2568,23 +2568,29 @@ async function saveStateLocal() {
 // ═══════════════════════════════════════════════════════════
 //   管理表時間 → Firebase 強制書込
 // ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
 //   管理表時間 → Firebase 強制書込 (v91)
 // ═══════════════════════════════════════════════════════════
 async function forcePushMgmtHoursToFirebase(onProgress) {
   const se = window.SPREADSHEET_ENTRIES;
-  if (!se || Object.keys(se).length === 0) return { pushed:0, skipped:0, error:'SE_NOT_FOUND' };
+  const seKeys = se ? Object.keys(se) : [];
+  console.log('[forcePush] SE件数:', seKeys.length, '  firestoreDb:', !!firestoreDb, '  members:', (state.members||[]).length);
+  if (seKeys.length === 0) return { pushed:0, skipped:0, error:'SE_NOT_FOUND' };
   if (!firestoreDb || !currentRole) return { pushed:0, skipped:0, error:'NOT_CONNECTED' };
   const col = (state.firebaseConfig && state.firebaseConfig.collectionName) || 'shared';
   const _n = s => String(s).replace(/　/g,'').replace(/ /g,'');
   const nameToId = {};
   (state.members || []).forEach(m => { if (m.id && m.name) nameToId[_n(m.name)] = m.id; });
-  const entries = Object.entries(se);
-  let pushed = 0, skipped = 0;
-  for (let i = 0; i < entries.length; i++) {
-    const [key, val] = entries[i];
-    if (!val) continue;
-    const h = parseFloat(val.hours || 0);
-    if (!(h > 0)) continue;
+  console.log('[forcePush] nameToId:', JSON.stringify(nameToId).slice(0,200));
+  // 最初のSEエントリをデバッグ
+  if (seKeys[0]) console.log('[forcePush] SE[0]:', seKeys[0], '->', JSON.stringify(se[seKeys[0]]));
+  let pushed = 0, skipped = 0, noH = 0;
+  for (let i = 0; i < seKeys.length; i++) {
+    const key = seKeys[i];
+    const val = se[key];
+    if (!val) { noH++; continue; }
+    const h = parseFloat(typeof val === 'object' ? (val.hours || 0) : val);
+    if (!(h > 0)) { noH++; continue; }
     const bar = key.lastIndexOf('|');
     if (bar < 0) continue;
     const mId = nameToId[_n(key.slice(0,bar))];
@@ -2599,9 +2605,10 @@ async function forcePushMgmtHoursToFirebase(onProgress) {
         { memberId:mId, date, hours:h, updatedAt:window._fbServerTimestamp(), updatedBy:'MGMT_v91' }
       );
       pushed++;
-    } catch(e) { console.warn('push失敗:', key, e.message); }
-    if (onProgress && i % 10 === 0) onProgress(i, entries.length, pushed);
+    } catch(e) { console.warn('[forcePush] push失敗:', key, e.message); }
+    if (onProgress && i%10===0) onProgress(i, seKeys.length, pushed);
   }
+  console.log('[forcePush] 結果: pushed='+pushed+', skipped='+skipped+', noH='+noH);
   return { pushed, skipped };
 }
 
@@ -4590,34 +4597,8 @@ function addMember() {
 
 // ═══════════════════════════════════════════════════════════
 //   ADMIN
-// ─── 稼働時間強制書込実行 ───
-async function runForcePush() {
-  const btn = document.getElementById('force-push-btn');
-  const status = document.getElementById('force-push-status');
-  if (btn) btn.disabled = true;
-  const se = window.SPREADSHEET_ENTRIES;
-  if (!se || Object.keys(se).length === 0) {
-    if (status) status.textContent = '❌ データ未読込。Ctrl+Shift+Rでリロード後に再試行';
-    if (btn) btn.disabled = false;
-    return;
-  }
-  if (status) status.textContent = '⏳ 書込み中...';
-  try {
-    const r = await forcePushMgmtHoursToFirebase(function(i,t,d) {
-      if (status) status.textContent = '⏳ '+i+'/'+t+'件（'+d+'件保存済）';
-    });
-    if (r.error === 'NOT_CONNECTED') {
-      if (status) status.textContent = '❌ Firebase未接続。ログイン後に再試行';
-    } else {
-      if (status) status.textContent = '✅ '+r.pushed+'件保存完了（スキップ:'+r.skipped+'）';
-      showToast('✅ 稼働時間 '+r.pushed+'件をFirebaseに書込みました');
-    }
-  } catch(e) {
-    if (status) status.textContent = '❌ エラー: '+e.message;
-  } finally {
-    if (btn) btn.disabled = false;
-  }
-}
+// ═══════════════════════════════════════════════════════════
+
 let adminUnlocked = false;
 
 function renderAdminLock() {
@@ -4644,431 +4625,43 @@ function renderAdminLock() {
 }
 
 
+// ─── 稼働時間強制書込実行 ───
 async function runForcePush() {
   const btn = document.getElementById('force-push-btn');
   const status = document.getElementById('force-push-status');
   if (btn) btn.disabled = true;
-  if (status) status.textContent = '⏳ 書込み中...';
+  const se = window.SPREADSHEET_ENTRIES;
+  const seLen = se ? Object.keys(se).length : 0;
+  console.log('[runForcePush] se件数:', seLen, 'firestoreDb:', !!firestoreDb);
+  if (seLen === 0) {
+    if (status) status.textContent = '❌ SPREADSHEET_ENTRIES未ロード。Ctrl+Shift+Rでハードリロード後に再試行';
+    if (btn) btn.disabled = false;
+    return;
+  }
+  if (!firestoreDb) {
+    if (status) status.textContent = '❌ Firebase未接続。管理者ログイン後に実行';
+    if (btn) btn.disabled = false;
+    return;
+  }
+  if (status) status.textContent = '⏳ 書込み中（SE ' + seLen + '件）...';
   try {
-    const result = await forcePushMgmtHoursToFirebase(function(i, total, pushed) {
-      if (status) status.textContent = `⏳ ${i}/${total}件処理中（${pushed}件保存）`;
+    const r = await forcePushMgmtHoursToFirebase(function(i,t,d) {
+      if (status) status.textContent = '⏳ '+i+'/'+t+'件（保存済:'+d+'）';
     });
-    const pushed = (result && result.pushed) || 0;
-    const skipped = (result && result.skipped) || 0;
-    if (status) status.textContent = `✅ 完了: ${pushed}件保存（スキップ: ${skipped}件）`;
-    showToast(`✅ 稼働時間 ${result.pushed}件をFirebaseに書込みました`);
+    if (r.error === 'SE_NOT_FOUND') {
+      if (status) status.textContent = '❌ SEデータが見つかりません';
+    } else if (r.error === 'NOT_CONNECTED') {
+      if (status) status.textContent = '❌ Firebase未接続';
+    } else {
+      if (status) status.textContent = '✅ '+r.pushed+'件保存完了（スキップ:'+r.skipped+'）';
+      showToast('✅ '+r.pushed+'件をFirebaseに書込みました');
+    }
   } catch(e) {
-    if (status) status.textContent = `❌ エラー: ${e.message}`;
+    if (status) status.textContent = '❌ 例外: '+e.message;
+    console.error('[runForcePush]', e);
   } finally {
     if (btn) btn.disabled = false;
   }
-}
-
-function saveTarget() {
-  state.monthlyTarget = {
-    dentou: parseInt(document.getElementById("t-dentou").value) || 100,
-    efficiency: parseFloat(document.getElementById("t-efficiency").value) || 0.400,
-    seiyaku: parseInt(document.getElementById("t-seiyaku").value) || 71,
-    hours: parseInt(document.getElementById("t-hours").value) || 2000,
-    dentouPerSeiyaku: parseFloat(document.getElementById("t-dentou-per-seiyaku").value) || 1.4
-  };
-  saveState();
-  showToast("月間目標を保存しました");
-}
-
-function checkAdminPin() {
-  const v = document.getElementById("admin-pin-input").value;
-  if (v === state.pin) {
-    adminUnlocked = true;
-    renderAdminLock();
-  } else {
-    alert("PINが違います");
-  }
-}
-
-function changePin() {
-  const v = document.getElementById("new-pin").value;
-  if (!/^\d{4}$/.test(v)) {
-    alert("4桁の数字を入力してください");
-    return;
-  }
-  state.pin = v;
-  saveState();
-  showToast("PINを変更しました");
-  document.getElementById("new-pin").value = "";
-}
-
-
-
-
-async function exportAllData() {
-  const json = JSON.stringify(state, null, 2);
-  const blob = new Blob([json], {type: "application/json"});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `call-tracker-backup-${new Date().toISOString().slice(0,10)}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-  showToast("データをエクスポートしました");
-}
-
-function importData(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-  const r = new FileReader();
-  r.onload = async (ev) => {
-    try {
-      const data = JSON.parse(ev.target.result);
-      if (!confirm("現在のデータを上書きします。よろしいですか？")) return;
-      state = data;
-      await saveState();
-      showToast("データをインポートしました");
-      location.reload();
-    } catch(err) {
-      alert("ファイルの読み込みに失敗しました");
-    }
-  };
-  r.readAsText(file);
-}
-
-async function resetAllData() {
-  if (!confirm("全データを削除します。この操作は取り消せません。本当に実行しますか？")) return;
-  if (!confirm("最後の確認です。実行すると全員のデータが消えます。")) return;
-  try {
-    localStorage.removeItem("tracker-state");
-  } catch(e) {}
-  location.reload();
-}
-
-
-
-// ═══════════════════════════════════════════════════════════
-//   PREVIOUS DAY RANKING
-// ═══════════════════════════════════════════════════════════
-
-function renderPrevRanking() {
-  const dateInput = document.getElementById("prev-rank-date");
-  if (!dateInput.value) {
-    const y = new Date();
-    y.setDate(y.getDate() - 1);
-    dateInput.value = y.toISOString().slice(0,10);
-  }
-  const date = dateInput.value;
-
-  const active = state.members.filter(m => m.active && m.name);
-  const dayData = active.map(m => {
-    const rep = aggregateDayFromReports(m.id, date);
-    return {m, rep};
-  }).filter(x => x.rep !== null)
-    .sort((a,b) => (b.rep.seiyaku || 0) - (a.rep.seiyaku || 0));
-
-  if (dayData.length === 0) {
-    document.getElementById("prev-ranking-content").innerHTML =
-      '<div class="empty-state" style="padding:40px;text-align:center;color:var(--text-mute);">' +
-      `📭 ${date} の日報データがありません<br><br>` +
-      '<span style="font-size:12px;">「日報Excel取込」メニューから該当日のデータを取り込んでください</span>' +
-      '</div>';
-    return;
-  }
-
-  let html = `<div class="ranking-list">
-    <div class="rank-row header">
-      <div>順位</div><div>名前</div>
-      <div style="text-align:right;">コール</div>
-      <div style="text-align:right;">コネクト</div>
-      <div style="text-align:right;">前確OK</div>
-      <div style="text-align:right;">成約社数</div>
-      <div style="text-align:right;">コール/h</div>
-      <div style="text-align:right;">社数効率</div>
-    </div>`;
-
-  dayData.forEach((r, i) => {
-    const cls = i === 0 ? "top-1" : i === 1 ? "top-2" : i === 2 ? "top-3" : "";
-    html += `<div class="rank-row ${cls}">
-      <div class="rank-badge">${i+1}</div>
-      <div class="rank-name">${memberNameWithAvatar(r.m)}</div>
-      <div class="rank-metric dim">${r.rep.call || 0}</div>
-      <div class="rank-metric dim">${r.rep.connect || 0}</div>
-      <div class="rank-metric">${r.rep.maekaku_ok || 0}</div>
-      <div class="rank-metric">${r.rep.seiyaku || 0}</div>
-      <div class="rank-metric dim">${r.rep.callperhour.toFixed(1)}</div>
-      <div class="rank-metric" style="color:var(--accent)">${r.rep.efficiency.toFixed(3)}</div>
-    </div>`;
-  });
-  html += '</div>';
-
-  document.getElementById("prev-ranking-content").innerHTML = html;
-}
-
-// ═══════════════════════════════════════════════════════════
-//   PAYROLL
-// ═══════════════════════════════════════════════════════════
-
-// 社数効率(=回収/稼働h)から時給を算出
-function calcHourlyRateByEfficiency(efficiency) {
-  // 0.00〜0.349: 1400
-  // 0.35〜0.399: 1500
-  // 0.40〜0.499: 1600
-  // 0.50〜0.599: 1700
-  // 以降0.1毎に+100円
-  if (efficiency < 0.35) return 1400;
-  if (efficiency < 0.40) return 1500;
-  // 0.40以上は 0.1刻みで+100
-  // 0.40〜0.499 → 1600, 0.50〜0.599 → 1700, ...
-  const bucket = Math.floor((efficiency - 0.40) / 0.1);  // 0, 1, 2, ...
-  return 1600 + bucket * 100;
-}
-
-function getGradeBonus(role) {
-  if (role === "G1") return 200;
-  if (role === "G2") return 100;
-  return 0;
-}
-
-function renderPayroll() {
-  const sel = document.getElementById("payroll-month");
-  if (!sel.innerHTML) {
-    for (let m = 1; m <= 12; m++) sel.innerHTML += `<option value="${m}">${m}月</option>`;
-    sel.value = state.currentMonth;
-    sel.onchange = renderPayroll;
-  }
-  
-  const month = parseInt(sel.value);
-  // ★ 当月在籍メンバー（退職者含む）
-  const active = typeof getMembersForMonth === 'function'
-    ? getMembersForMonth(new Date().getFullYear(), month)
-    : state.members.filter(m => m.active && m.name);
-  
-  let html = `<div class="table-card"><div class="table-scroll"><table>
-    <tr class="group-hd">
-      <th>名前</th>
-      <th>職級</th>
-      <th>稼働h</th>
-      <th>回収</th>
-      <th>社数効率</th>
-      <th>基準時給</th>
-      <th>職級加算</th>
-      <th>合計時給</th>
-      <th>月給合計</th>
-    </tr>`;
-  
-  // 社員は給与計算から除外（固定給与のため）
-  const payrollMembers = active.filter(m => !isEmployee(m));
-
-  let grandTotal = 0;
-  payrollMembers.forEach(m => {
-    const a = aggregateMonthFromReports(m.id, month);
-    const efficiency = a.efficiency;
-    const baseHourlyRate = calcHourlyRateByEfficiency(efficiency);
-    const gradeBonus = getGradeBonus(m.role);
-    const totalHourlyRate = baseHourlyRate + gradeBonus;
-    const monthlyTotal = totalHourlyRate * a.hours;
-    grandTotal += monthlyTotal;
-    
-    html += `<tr>
-      <td class="name-cell">${m.name}</td>
-      <td><strong style="color:var(--accent)">${m.role || '—'}</strong></td>
-      <td>${a.hours.toFixed(1)}h</td>
-      <td>${a.seiyaku || 0}</td>
-      <td>${efficiency.toFixed(3)}</td>
-      <td>¥${baseHourlyRate.toLocaleString()}</td>
-      <td>¥${gradeBonus > 0 ? "+" + gradeBonus.toLocaleString() : 0}</td>
-      <td style="font-weight:700;color:var(--accent);">¥${totalHourlyRate.toLocaleString()}</td>
-      <td style="font-weight:700;color:var(--accent);">¥${Math.round(monthlyTotal).toLocaleString()}</td>
-    </tr>`;
-  });
-  
-  html += `<tr class="total">
-    <td colspan="8" class="name-cell">総支給額</td>
-    <td style="font-weight:700;">¥${Math.round(grandTotal).toLocaleString()}</td>
-  </tr>`;
-  
-  html += '</table></div></div>';
-  
-  // Rate table reference
-  html += `<div class="table-card" style="padding:20px;margin-top:16px;">
-    <h3 style="margin-bottom:12px;font-size:14px;">📋 時給テーブル</h3>
-    <div style="color:var(--text-dim);font-size:12px;margin-bottom:12px;">社数効率 = 回収 ÷ 稼働時間</div>
-    <table style="width:auto;">
-      <tr class="group-hd">
-        <th style="padding:8px 16px;">社数効率</th>
-        <th style="padding:8px 16px;">基準時給</th>
-        <th style="padding:8px 16px;">G1 (+¥200)</th>
-        <th style="padding:8px 16px;">G2 (+¥100)</th>
-        <th style="padding:8px 16px;">G3</th>
-      </tr>
-      ${[
-        ["0.00 〜 0.349", 1400],
-        ["0.35 〜 0.399", 1500],
-        ["0.40 〜 0.499", 1600],
-        ["0.50 〜 0.599", 1700],
-        ["0.60 〜 0.699", 1800],
-        ["0.70 〜 0.799", 1900],
-        ["0.80 〜 0.899", 2000],
-        ["0.90 〜 0.999", 2100],
-        ["1.00 〜", 2200]
-      ].map(([range, rate]) => `<tr>
-        <td style="padding:6px 16px;">${range}</td>
-        <td style="padding:6px 16px;">¥${rate.toLocaleString()}</td>
-        <td style="padding:6px 16px;color:var(--success);">¥${(rate+200).toLocaleString()}</td>
-        <td style="padding:6px 16px;color:var(--accent);">¥${(rate+100).toLocaleString()}</td>
-        <td style="padding:6px 16px;">¥${rate.toLocaleString()}</td>
-      </tr>`).join('')}
-    </table>
-  </div>`;
-  
-  document.getElementById("payroll-content").innerHTML = html;
-}
-
-function exportPayroll() {
-  const month = parseInt(document.getElementById("payroll-month").value);
-  const active = state.members.filter(m => m.active && m.name && !isEmployee(m));
-
-  const rows = [["名前","職級","稼働h","回収","社数効率","基準時給","職級加算","合計時給","月給合計"]];
-  active.forEach(m => {
-    const a = aggregateMonthFromReports(m.id, month);
-    const efficiency = a.efficiency;
-    const baseHourlyRate = calcHourlyRateByEfficiency(efficiency);
-    const gradeBonus = getGradeBonus(m.role);
-    const totalHourlyRate = baseHourlyRate + gradeBonus;
-    const monthlyTotal = totalHourlyRate * a.hours;
-    rows.push([
-      m.name, m.role || "", a.hours.toFixed(1), (a.seiyaku || 0),
-      efficiency.toFixed(3), baseHourlyRate, gradeBonus,
-      totalHourlyRate, Math.round(monthlyTotal)
-    ]);
-  });
-  
-  const csv = rows.map(r => r.map(c => `"${c}"`).join(",")).join("\n");
-  const blob = new Blob(["\uFEFF" + csv], {type: "text/csv"});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `payroll-${month}月-${new Date().toISOString().slice(0,10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-  showToast("給与計算をCSV出力しました");
-}
-
-
-
-// ═══════════════════════════════════════════════════════════
-//   DAILY EXCEL IMPORT
-// ═══════════════════════════════════════════════════════════
-
-function loadScript(url) {
-  return new Promise((resolve, reject) => {
-    if (document.querySelector(`script[src="${url}"]`)) { resolve(); return; }
-    const s = document.createElement("script");
-    s.src = url;
-    s.onload = resolve;
-    s.onerror = reject;
-    document.head.appendChild(s);
-  });
-}
-
-function renderDailyImport() {
-  const today = new Date().toISOString().slice(0,10);
-  const dateInput = document.getElementById("import-date");
-  if (dateInput && !dateInput.value) dateInput.value = today;
-
-  // 月セレクタを動的生成（年次対応）
-  const year = new Date().getFullYear();
-  const archiveSel = document.getElementById("archive-import-month");
-  if (archiveSel && !archiveSel.innerHTML.trim()) {
-    let opts = '';
-    for (let y = year - 1; y <= year + 1; y++) {
-      for (let m = 1; m <= 12; m++) {
-        opts += `<option value="${m}" data-year="${y}" ${y===year&&m===new Date().getMonth()+1?'selected':''}>${y}年${m}月</option>`;
-      }
-    }
-    archiveSel.innerHTML = opts;
-  }
-
-  // 月次一括取込の月・年セレクタ
-  const bulkMonth = document.getElementById("unified-bulk-month");
-  const bulkYear = document.getElementById("unified-bulk-year");
-  if (bulkMonth && !bulkMonth.innerHTML.trim()) {
-    for (let m = 1; m <= 12; m++) bulkMonth.innerHTML += `<option value="${m}" ${m===new Date().getMonth()+1?'selected':''}>${m}月</option>`;
-  }
-  if (bulkYear && !bulkYear.innerHTML.trim()) {
-    for (let y = year - 1; y <= year + 1; y++) bulkYear.innerHTML += `<option value="${y}" ${y===year?'selected':''}>${y}年</option>`;
-  }
-
-  // 月次一括ドロップゾーン
-  const bulkDropzone = document.getElementById("unified-bulk-dropzone");
-  if (bulkDropzone && !bulkDropzone._initialized) {
-    bulkDropzone._initialized = true;
-    const bulkFile = document.getElementById("unified-bulk-file");
-    bulkFile.onchange = async () => {
-      const file = bulkFile.files[0];
-      if (!file) return;
-      const month = parseInt(document.getElementById("unified-bulk-month").value);
-      const yr = parseInt(document.getElementById("unified-bulk-year").value);
-      const statusEl = document.getElementById("unified-bulk-status");
-      statusEl.innerHTML = "⏳ 月次取込中...";
-      await importMonthlyExcel(file, yr, month, statusEl);
-    };
-    bulkDropzone.addEventListener("dragover", e => { e.preventDefault(); bulkDropzone.classList.add("drag-over"); });
-    bulkDropzone.addEventListener("dragleave", () => bulkDropzone.classList.remove("drag-over"));
-    bulkDropzone.addEventListener("drop", async e => {
-      e.preventDefault(); bulkDropzone.classList.remove("drag-over");
-      const file = e.dataTransfer.files[0];
-      if (!file) return;
-      const month = parseInt(document.getElementById("unified-bulk-month").value);
-      const yr = parseInt(document.getElementById("unified-bulk-year").value);
-      const statusEl = document.getElementById("unified-bulk-status");
-      await importMonthlyExcel(file, yr, month, statusEl);
-    });
-  }
-
-  // 月別リセットのセレクタ初期化
-  const resetYear = document.getElementById("reset-month-year");
-  const resetMonthSel = document.getElementById("reset-month-month");
-  if (resetYear && !resetYear.innerHTML.trim()) {
-    for (let y = year - 1; y <= year + 1; y++) resetYear.innerHTML += `<option value="${y}" ${y===year?'selected':''}>${y}年</option>`;
-  }
-  if (resetMonthSel && !resetMonthSel.innerHTML.trim()) {
-    for (let m = 1; m <= 12; m++) resetMonthSel.innerHTML += `<option value="${m}" ${m===new Date().getMonth()+1?'selected':''}>${m}月</option>`;
-  }
-  const updateResetPreview = () => {
-    if (!resetYear || !resetMonthSel) return;
-    const y = resetYear.value;
-    const m = String(resetMonthSel.value).padStart(2,"0");
-    const mKey = `${y}-${m}`;
-    const cnt = Object.keys(state.dailyReports || {}).filter(k => k.includes(`|${mKey}-`)).length;
-    const prevEl = document.getElementById("reset-month-preview");
-    if (prevEl) prevEl.innerHTML = cnt > 0
-      ? `<span style="color:var(--danger);">⚠️ ${y}年${parseInt(m)}月のデータ：${cnt} 件が存在します</span>`
-      : `<span style="color:var(--success);">✅ ${y}年${parseInt(m)}月のデータはありません</span>`;
-  };
-  if (resetYear) { resetYear.onchange = updateResetPreview; }
-  if (resetMonthSel) { resetMonthSel.onchange = updateResetPreview; }
-  updateResetPreview();
-
-  renderImportedReports();
-  renderHourAlerts();
-}
-
-async function resetMonthData() {
-  const y = document.getElementById("reset-month-year").value;
-  const m = String(document.getElementById("reset-month-month").value).padStart(2,"0");
-  const mKey = `${y}-${m}`;
-  const keys = Object.keys(state.dailyReports || {}).filter(k => k.includes(`|${mKey}-`));
-  if (keys.length === 0) {
-    document.getElementById("reset-month-status").innerHTML = `<span style="color:var(--text-mute);">ℹ️ ${y}年${parseInt(m)}月のデータは存在しません</span>`;
-    return;
-  }
-  if (!confirm(`${y}年${parseInt(m)}月のデータ ${keys.length} 件を削除します。\n削除後、Excelを再取込してください。\n\n本当に削除しますか？`)) return;
-  keys.forEach(k => {
-    delete state.dailyReports[k];
-    if (state.reportedHours) delete state.reportedHours[k];
-  });
-  await saveState();
-  document.getElementById("reset-month-status").innerHTML = `<span style="color:var(--success);">✅ ${y}年${parseInt(m)}月のデータ ${keys.length} 件を削除しました。Excelを再取込してください。</span>`;
-  document.getElementById("reset-month-preview").innerHTML = `<span style="color:var(--success);">✅ ${y}年${parseInt(m)}月のデータはありません</span>`;
-  renderImportedReports();
 }
 
 function normalizeName(name) {
