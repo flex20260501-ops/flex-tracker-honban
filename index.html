@@ -8843,8 +8843,7 @@ function aggregateMonth(memberId, month) {
   const pf = v => parseFloat(v) || 0;
   const counted = new Set(); // 処理済み日付
 
-  // ① 稼働時間の加算
-  // 優先順位: 日次入力（手打ち修正）> SE（管理表）> ③で処理
+  // ① 稼働時間の加算：SPREADSHEET_ENTRIES（管理表）が唯一の正本
   const mForAgg = (state.members || []).find(function(m) { return m.id === memberId; });
   const nn4agg = mForAgg && mForAgg.name ? mForAgg.name.replace(/　/g,'').replace(/ /g,'') : null;
   const seAll = window.SPREADSHEET_ENTRIES || {};
@@ -8859,10 +8858,7 @@ function aggregateMonth(memberId, month) {
       if (seName !== nn4agg) continue;
       const seH = parseFloat((seAll[seKey]||{}).hours||0);
       if (seH <= 0) continue;
-      // 日次入力に手打ちがあればそちらを優先（修正値）
-      const drKey = memberId + '|' + seDate;
-      const drH = parseFloat(((state.dailyReports||{})[drKey]||{}).hours||0);
-      agg.hours += drH > 0 ? drH : seH;
+      agg.hours += seH;
       counted.add(seDate);
     }
   }
@@ -8897,10 +8893,8 @@ function aggregateMonth(memberId, month) {
     if (mId !== memberId) continue;
     if (parseInt(date.split('-')[1]) !== month) continue;
     if (!counted.has(date)) {
-      // 日次入力(rep.hours)が最優先、なければSE(getMgmtHours)
-      const _repH3 = pf(rep.hours);
-      const _seH3  = getMgmtHours(memberId, date);
-      agg.hours += _repH3 > 0 ? _repH3 : (_seH3 > 0 ? _seH3 : 0);
+      // SEが正本（getMgmtHours）、なければentries
+      agg.hours += getMgmtHours(memberId, date) || 0;
       counted.add(date);
     }
     agg.maekaku_ok  = (agg.maekaku_ok  || 0) + pf(rep.maekaku_ok);
@@ -11658,47 +11652,44 @@ function aggregateMonthFromReports(memberId, month) {
     days: 0
   };
   const datesWithReport = new Set();
+
+  // ── Loop1: dailyReports から成約・前確・パス等を集計 ──────────────────
+  // hours は dailyReports から取らない（SEが正本）
   for (const [key, rep] of Object.entries(state.dailyReports || {})) {
-    const [mId, date] = key.split("|");
+    const [mId, date] = key.split('|');
     if (mId !== memberId) continue;
-    const dMonth = parseInt(date.split("-")[1]);
-    if (dMonth !== month) continue;
+    if (parseInt(date.split('-')[1]) !== month) continue;
+
+    // hours 以外の全フィールドを加算
     for (const k of Object.keys(agg)) {
-      if (k === "days") continue;
+      if (k === 'days' || k === 'hours') continue;
       agg[k] += parseFloat(rep[k] || 0);
     }
-    // 後方互換：goukaku_cxlが未記録の古いデータはshortで補完（重複しないよう rep.goukaku_cxl が0のときのみ）
+    // 後方互換
     if (!rep.goukaku_cxl && rep.short)       agg.goukaku_cxl += parseFloat(rep.short || 0);
     if (!rep.dentou_cxl  && rep.short_dentou) agg.dentou_cxl  += parseFloat(rep.short_dentou || 0);
-    // ★ hours はSPREADSHEET_ENTRIES正本、call/connectはentries優先
+
+    // call/connect: state.entries優先
     const ent = getEntry(memberId, date);
-    // 優先順位: 日次入力手打ち > SE管理表 > entries
-    const _mh2   = getMgmtHours(memberId, date);
-    const _repH2 = parseFloat(rep.hours || 0);
-    const _entH2 = parseFloat(ent.hours || 0);
-    if (_repH2 > 0) {
-      // 日次入力で手打ちあり → rep.hoursが既にagg.hoursに加算済みなので何もしない
-    } else if (_mh2 > 0) {
-      agg.hours = agg.hours + _mh2; // SE値を追加（rep.hoursは0なので引く必要なし）
-    } else if (_entH2 > 0) {
-      agg.hours = agg.hours + _entH2;
-    }
     if (ent.call    > 0) { agg.call    = agg.call    - parseFloat(rep.call    || 0) + parseFloat(ent.call); }
     if (ent.connect > 0) { agg.connect = agg.connect - parseFloat(rep.connect || 0) + parseFloat(ent.connect); }
+
     datesWithReport.add(date);
     agg.days++;
   }
-  // _MGMT_MAPをベースに全日付を走査（dailyReports・entries双方にない日もカバー）
+
+  // ── Loop2: SPREADSHEET_ENTRIES から hours を集計（SE一択）────────────
   const member4r = (state.members || []).find(function(m) { return m.id === memberId; });
   if (member4r && member4r.name) {
     const n4 = member4r.name.replace(/[　 ]/g, '');
     const bd4 = getMgmtDatesByName(n4);
     for (const date in bd4) {
       if (parseInt(date.split('-')[1]) !== month) continue;
+      // 稼働時間はSEのみ
+      agg.hours += bd4[date];
+      // dailyReportがない日は call/connect も entries から
       if (!datesWithReport.has(date)) {
-        // dailyReportがない日: _MGMT_MAPからhours、state.entriesからcall/connect
         const ent = getEntry(memberId, date);
-        agg.hours   += bd4[date];
         agg.call    += parseFloat(ent.call    || 0);
         agg.connect += parseFloat(ent.connect || 0);
         agg.meisai_kaishuu += parseFloat(ent.kaishuu || 0);
@@ -11706,29 +11697,28 @@ function aggregateMonthFromReports(memberId, month) {
       }
     }
   }
-  // dailyReportsにある日のentries（kaishuu補完用）
+
+  // entries kaishuu補完
   for (const [key, entry] of Object.entries(state.entries || {})) {
-    const [mId, date] = key.split("|");
+    const [mId, date] = key.split('|');
     if (mId !== memberId) continue;
-    if (parseInt(date.split("-")[1]) !== month) continue;
+    if (parseInt(date.split('-')[1]) !== month) continue;
     if (datesWithReport.has(date)) {
       agg.meisai_kaishuu += parseFloat(entry.kaishuu || 0);
     }
   }
-  for (const k of Object.keys(agg)) { if (typeof agg[k] !== "number" || isNaN(agg[k])) agg[k] = 0; }
-  // CXL除算（1回のみ）
+
+  for (const k of Object.keys(agg)) { if (typeof agg[k] !== 'number' || isNaN(agg[k])) agg[k] = 0; }
   agg.seiyaku        = Math.max(0, agg.seiyaku        - agg.goukaku_cxl);
   agg.seiyaku_dentou = Math.max(0, agg.seiyaku_dentou - agg.dentou_cxl);
-  // douryoku / seiyaku_douryoku：seiyaku_douryokuが正本、なければdouryokuで補完
-  if (agg.seiyaku_douryoku === 0 && agg.douryoku > 0) {
-    agg.seiyaku_douryoku = agg.douryoku;
-  }
+  if (agg.seiyaku_douryoku === 0 && agg.douryoku > 0) agg.seiyaku_douryoku = agg.douryoku;
   agg.douryoku = 0;
   agg.callperhour = agg.hours > 0 ? agg.call / agg.hours : 0;
-  agg.connectRate = agg.call > 0 ? agg.connect / agg.call : 0;
+  agg.connectRate = agg.call > 0  ? agg.connect / agg.call : 0;
   agg.efficiency  = agg.hours > 0 ? agg.seiyaku / (agg.hours / 8) : 0;
   return agg;
 }
+
 
 function aggregateDayFromReports(memberId, date) {
   const k = `${memberId}|${date}`;
