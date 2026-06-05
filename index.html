@@ -10468,8 +10468,121 @@ function renderMonthly() {
     return;
   }
   const rows = displayList.map(m => ({m, a: aggregateMonth(m.id, month)}));
+  let html = '';
 
-  let html = `<div class="table-card"><div class="table-scroll"><table>
+  html += `<div class="table-card"><div class="table-scroll"><table>
+    <tr class="group-hd">
+      <th rowspan="2">名前</th>
+      <th rowspan="2">稼働h</th>
+      <th colspan="2">コール</th>
+      <th colspan="3">コネクト・依頼済・回収</th>
+      <th rowspan="2">稼働効率</th>
+      <th colspan="3">見込み</th>
+      <th colspan="2">ヒアリング数</th>
+      <th colspan="2">ハルエネ</th>
+      <th colspan="2">その他</th>
+      <th rowspan="2">NG</th>
+      <th rowspan="2">総合<br>スコア</th>
+    </tr>
+    <tr>
+      <th>コール</th><th>/h</th>
+      <th>コネクト</th><th>依頼済</th><th>回収</th>
+      <th>A</th><th>B</th><th>C</th>
+      <th>ヒアリング</th><th>率</th>
+      <th>OK</th><th>NG</th><th>OK</th><th>NG</th>
+    </tr>`;
+
+  // ── 日報サマリ（成約・電灯・動力・転換率・前確OK・パス）──────────────
+  const drRows = displayList.map(m => ({ m, dr: aggregateMonthFromReports(m.id, month) }));
+  const drTotals = drRows.reduce((t, r) => {
+    t.seiyaku        += r.dr.seiyaku        || 0;
+    t.seiyaku_dentou += r.dr.seiyaku_dentou || 0;
+    t.dentou_plan    += r.dr.dentou_plan    || 0;
+    t.seiyaku_douryoku += r.dr.seiyaku_douryoku || 0;
+    t.maekaku_ok     += r.dr.maekaku_ok     || 0;
+    t.pass           += r.dr.pass           || 0;
+    t.goukaku_cxl    += r.dr.goukaku_cxl    || 0;
+    t.hours          += r.dr.hours          || 0;
+    return t;
+  }, { seiyaku:0, seiyaku_dentou:0, dentou_plan:0, seiyaku_douryoku:0, maekaku_ok:0, pass:0, goukaku_cxl:0, hours:0 });
+
+  const TN  = (v,d=0) => (v||0) % 1 === 0 ? String(Math.round(v||0)) : (v||0).toFixed(d);
+  const pct = (a,b) => b > 0 ? ((a/b)*100).toFixed(1)+'%' : '-';
+
+  html += `<div style="margin-bottom:18px;">
+  <div style="font-size:12px;font-weight:700;color:var(--text-dim);letter-spacing:.08em;margin-bottom:8px;padding-left:2px;">
+    📋 日報サマリ // MONTHLY REPORT SUMMARY
+  </div>
+  <div class="table-card"><div class="table-scroll"><table>
+    <tr class="group-hd">
+      <th rowspan="2">名前</th>
+      <th rowspan="2">稼働H</th>
+      <th colspan="2" style="border-left:2px solid rgba(255,255,255,.2);">成約</th>
+      <th colspan="2">電灯</th>
+      <th rowspan="2">動力</th>
+      <th rowspan="2" style="background:rgba(16,185,129,.15);">転換率</th>
+      <th colspan="2" style="border-left:2px solid rgba(255,255,255,.2);">前確</th>
+      <th rowspan="2">パス</th>
+      <th rowspan="2">CXL</th>
+      <th rowspan="2" style="background:rgba(16,185,129,.15);">電灯<br>効率</th>
+    </tr>
+    <tr>
+      <th style="border-left:2px solid rgba(255,255,255,.2);">社数</th>
+      <th>電灯</th>
+      <th>電灯</th><th>1社あたり</th>
+      <th style="border-left:2px solid rgba(255,255,255,.2);">Close</th><th>OK</th>
+    </tr>`;
+
+  drRows.forEach(r => {
+    const dr = r.dr;
+    const tenkan = pct(dr.seiyaku, dr.maekaku_ok);
+    const dentouPerSha = dr.seiyaku > 0 ? (dr.seiyaku_dentou / dr.seiyaku).toFixed(2) : '-';
+    const dentouKouritsu = dr.hours > 0 ? (dr.dentou_plan / dr.hours * 8).toFixed(3) : '-';
+    const isStatsBad = dr.seiyaku > 0 && parseFloat(dentouPerSha) < 1.4;
+    html += `<tr>
+      <td class="name-cell">${memberNameWithAvatar(r.m, {showBadges:false})}</td>
+      <td>${(dr.hours||0).toFixed(1)}</td>
+      <td style="border-left:2px solid rgba(255,255,255,.1);font-weight:700;">${TN(dr.seiyaku)}</td>
+      <td>${TN(dr.seiyaku_dentou)}</td>
+      <td style="font-weight:700;">${TN(dr.dentou_plan)}</td>
+      <td style="color:${isStatsBad?'var(--red)':'inherit'}">${dentouPerSha}</td>
+      <td>${TN(dr.seiyaku_douryoku)}</td>
+      <td style="background:rgba(16,185,129,.08);font-weight:700;">${tenkan}</td>
+      <td style="border-left:2px solid rgba(255,255,255,.1);">${TN(dr.maekaku_close)}</td>
+      <td style="font-weight:700;color:var(--green);">${TN(dr.maekaku_ok)}</td>
+      <td>${TN(dr.pass)}</td>
+      <td>${TN(dr.goukaku_cxl)}</td>
+      <td style="background:rgba(16,185,129,.08);">${dentouKouritsu}</td>
+    </tr>`;
+  });
+
+  // チーム合計行
+  const tt = drTotals;
+  const tt_tenkan = pct(tt.seiyaku, tt.maekaku_ok);
+  const tt_dps = tt.seiyaku > 0 ? (tt.seiyaku_dentou / tt.seiyaku).toFixed(2) : '-';
+  const tt_eff = tt.hours > 0 ? (tt.dentou_plan / tt.hours * 8).toFixed(3) : '-';
+  html += `<tr class="total-row" style="background:rgba(255,255,255,.08);font-weight:700;">
+    <td>チーム合計</td>
+    <td>${(tt.hours||0).toFixed(1)}</td>
+    <td style="border-left:2px solid rgba(255,255,255,.1);">${TN(tt.seiyaku)}</td>
+    <td>${TN(tt.seiyaku_dentou)}</td>
+    <td>${TN(tt.dentou_plan)}</td>
+    <td>${tt_dps}</td>
+    <td>${TN(tt.seiyaku_douryoku)}</td>
+    <td style="background:rgba(16,185,129,.08);">${tt_tenkan}</td>
+    <td style="border-left:2px solid rgba(255,255,255,.1);">${TN(tt.maekaku_ok)}</td>
+    <td style="color:var(--green);">${TN(tt.maekaku_ok)}</td>
+    <td>${TN(tt.pass)}</td>
+    <td>${TN(tt.goukaku_cxl)}</td>
+    <td style="background:rgba(16,185,129,.08);">${tt_eff}</td>
+  </tr>`;
+  html += `</table></div></div></div>`;
+
+  // ── コールデータテーブル ─────────────────────────────────────────────
+  html += `<div style="font-size:12px;font-weight:700;color:var(--text-dim);letter-spacing:.08em;margin-bottom:8px;padding-left:2px;">
+    📞 コールデータ // CALL DATA FROM WEEKLY SHEET
+  </div>
+  <div class="table-card"><div class="table-scroll"><table>
     <tr class="group-hd">
       <th rowspan="2">名前</th>
       <th rowspan="2">稼働h</th>
