@@ -8746,9 +8746,9 @@ function getRankChange(month, memberId, currentRank) {
 
 function rankChangeBadge(diff) {
   if (diff === null || diff === undefined) return '';
-  if (diff > 0) return '<span style="color:#10b981;font-size:11px;font-weight:700;margin-left:4px;">▲'+diff+'</span>';
-  if (diff < 0) return '<span style="color:#ef4444;font-size:11px;font-weight:700;margin-left:4px;">▼'+Math.abs(diff)+'</span>';
-  return '<span style="color:#94a3b8;font-size:11px;margin-left:4px;">→</span>';
+  if (diff > 0) return '<span style="display:inline-block;background:#d1fae5;color:#065f46;font-size:10px;font-weight:800;padding:1px 5px;border-radius:4px;margin-left:5px;letter-spacing:.3px;">'+diff+'UP</span>';
+  if (diff < 0) return '<span style="display:inline-block;background:#fee2e2;color:#991b1b;font-size:10px;font-weight:800;padding:1px 5px;border-radius:4px;margin-left:5px;letter-spacing:.3px;">'+Math.abs(diff)+'DOWN</span>';
+  return '<span style="display:inline-block;background:#f1f5f9;color:#64748b;font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;margin-left:5px;">-</span>';
 }
 
 async function saveState() {
