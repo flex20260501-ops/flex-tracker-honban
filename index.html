@@ -8868,10 +8868,8 @@ function aggregateMonth(memberId, month) {
     const [mId, date] = key.split('|');
     if (mId !== memberId) continue;
     if (parseInt(date.split('-')[1]) !== month) continue;
-    if (!counted.has(date)) {
-      agg.hours += pf(e.hours);
-      counted.add(date);
-    }
+    // hours は SE のみが正本のため state.entries.hours は使わない
+    if (!counted.has(date)) counted.add(date);
     agg.call      += pf(e.call);
     agg.connect   += pf(e.connect);
     agg.irai_done += pf(e.irai_done);
