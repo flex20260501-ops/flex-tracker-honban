@@ -8933,8 +8933,10 @@ function aggregateMonth(memberId, month) {
     if (mId !== memberId) continue;
     if (parseInt(date.split('-')[1]) !== month) continue;
     if (!counted.has(date)) {
-      // SEが正本（getMgmtHours）、なければentries
-      agg.hours += getMgmtHours(memberId, date) || 0;
+      // SEが正本（getMgmtHours）、SEにない日はentries.hours（6月等）
+      const _seH3 = getMgmtHours(memberId, date);
+      const _entH3 = parseFloat((getEntry(memberId, date)||{}).hours || 0);
+      agg.hours += _seH3 > 0 ? _seH3 : _entH3;
       counted.add(date);
     }
     agg.maekaku_ok  = (agg.maekaku_ok  || 0) + pf(rep.maekaku_ok);
@@ -11745,13 +11747,19 @@ function aggregateMonthFromReports(memberId, month) {
     }
   }
 
-  // entries kaishuu補完
+  // entries kaishuu補完 + SE未収録月(6月等)のhours取込
   for (const [key, entry] of Object.entries(state.entries || {})) {
     const [mId, date] = key.split('|');
     if (mId !== memberId) continue;
     if (parseInt(date.split('-')[1]) !== month) continue;
     if (datesWithReport.has(date)) {
       agg.meisai_kaishuu += parseFloat(entry.kaishuu || 0);
+    }
+    // SEにない日付でentries.hoursがあれば加算（6月等SE未収録月）
+    const seH = getMgmtHours(memberId, date);
+    if (seH <= 0 && parseFloat(entry.hours || 0) > 0) {
+      agg.hours += parseFloat(entry.hours);
+      if (!datesWithReport.has(date)) agg.days++;
     }
   }
 
@@ -12420,7 +12428,7 @@ async function importCallSheetExcel(file, year, month) {
       const action    = String(values[18] || "");
 
       // 全指標が0かつアクションも空 → 本当に空の行なのでスキップ
-      const hasData = call || connect || irai_done || kaishuu ||
+      const hasData = hoursFromGS || call || connect || irai_done || kaishuu ||
                       mikomi_a || mikomi_b || mikomi_c || irai_kazu ||
                       haru_ok || haru_ng || other_ok || other_ng || ng || action.trim();
       if (!hasData) return;
