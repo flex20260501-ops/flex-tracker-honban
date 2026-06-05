@@ -8843,8 +8843,8 @@ function aggregateMonth(memberId, month) {
   const pf = v => parseFloat(v) || 0;
   const counted = new Set(); // 処理済み日付
 
-  // ① 稼働時間の加算：SPREADSHEET_ENTRIES（管理表）のみを正本とする
-  // state.entries.hoursは使用しない（GSheets取込値は不正確な場合があるため）
+  // ① 稼働時間の加算
+  // 優先順位: 日次入力（手打ち修正）> SE（管理表）> ③で処理
   const mForAgg = (state.members || []).find(function(m) { return m.id === memberId; });
   const nn4agg = mForAgg && mForAgg.name ? mForAgg.name.replace(/　/g,'').replace(/ /g,'') : null;
   const seAll = window.SPREADSHEET_ENTRIES || {};
@@ -8858,10 +8858,12 @@ function aggregateMonth(memberId, month) {
       const seName = seKey.slice(0,bar).replace(/　/g,'').replace(/ /g,'');
       if (seName !== nn4agg) continue;
       const seH = parseFloat((seAll[seKey]||{}).hours||0);
-      if (seH > 0) {
-        agg.hours += seH;
-        counted.add(seDate);
-      }
+      if (seH <= 0) continue;
+      // 日次入力に手打ちがあればそちらを優先（修正値）
+      const drKey = memberId + '|' + seDate;
+      const drH = parseFloat(((state.dailyReports||{})[drKey]||{}).hours||0);
+      agg.hours += drH > 0 ? drH : seH;
+      counted.add(seDate);
     }
   }
 
@@ -8895,7 +8897,10 @@ function aggregateMonth(memberId, month) {
     if (mId !== memberId) continue;
     if (parseInt(date.split('-')[1]) !== month) continue;
     if (!counted.has(date)) {
-      agg.hours += getMgmtHours(memberId, date) || pf(rep.hours);
+      // 日次入力(rep.hours)が最優先、なければSE(getMgmtHours)
+      const _repH3 = pf(rep.hours);
+      const _seH3  = getMgmtHours(memberId, date);
+      agg.hours += _repH3 > 0 ? _repH3 : (_seH3 > 0 ? _seH3 : 0);
       counted.add(date);
     }
     agg.maekaku_ok  = (agg.maekaku_ok  || 0) + pf(rep.maekaku_ok);
@@ -11667,9 +11672,17 @@ function aggregateMonthFromReports(memberId, month) {
     if (!rep.dentou_cxl  && rep.short_dentou) agg.dentou_cxl  += parseFloat(rep.short_dentou || 0);
     // ★ hours はSPREADSHEET_ENTRIES正本、call/connectはentries優先
     const ent = getEntry(memberId, date);
-    const _mh2 = getMgmtHours(memberId, date);
-    if (_mh2 > 0) { agg.hours = agg.hours - parseFloat(rep.hours || 0) + _mh2; }
-    else if (ent.hours > 0) { agg.hours = agg.hours - parseFloat(rep.hours || 0) + parseFloat(ent.hours); }
+    // 優先順位: 日次入力手打ち > SE管理表 > entries
+    const _mh2   = getMgmtHours(memberId, date);
+    const _repH2 = parseFloat(rep.hours || 0);
+    const _entH2 = parseFloat(ent.hours || 0);
+    if (_repH2 > 0) {
+      // 日次入力で手打ちあり → rep.hoursが既にagg.hoursに加算済みなので何もしない
+    } else if (_mh2 > 0) {
+      agg.hours = agg.hours + _mh2; // SE値を追加（rep.hoursは0なので引く必要なし）
+    } else if (_entH2 > 0) {
+      agg.hours = agg.hours + _entH2;
+    }
     if (ent.call    > 0) { agg.call    = agg.call    - parseFloat(rep.call    || 0) + parseFloat(ent.call); }
     if (ent.connect > 0) { agg.connect = agg.connect - parseFloat(rep.connect || 0) + parseFloat(ent.connect); }
     datesWithReport.add(date);
