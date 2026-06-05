@@ -8707,7 +8707,7 @@ async function _pushSeHoursToFirebase(year, month) {
     try {
       await window._fbSetDoc(
         window._fbDoc(firestoreDb, col+'_entries', (mId+'_'+date).replace(/-/g,'_')),
-        { memberId:mId, date, hours:h, updatedAt:window._fbServerTimestamp(), updatedBy:'SE_AUTO' }
+        { memberId:mId, date, hours:h, updatedAt:window._fbServerTimestamp(), updatedBy:getInstanceId() }
       );
       pushed++;
     } catch(e) { console.warn('SE push:', key, e.message); }
@@ -12178,9 +12178,7 @@ async function importDailyReportExcel(file) {
 function updateTeamOp(date, value) {
   if (!state.teamOp) state.teamOp = {};
   state.teamOp[date] = parseFloat(value) || 0;
-  saveStateLocal();
-  // Firebase即時同期（他端末にリアルタイム反映）
-  if (typeof schedulePushToFirestore === 'function') schedulePushToFirestore();
+  saveState(); // Firebase即時同期（schedulePushToFirestoreを含む）
   const members2 = (state.members || []).filter(m => m.active && m.name);
   const ts = members2.reduce((sum, m) => sum + (parseFloat(((state.dailyReports||{})[m.id+'|'+date]||{}).seiyaku)||0), 0);
   const rate = ts > 0 ? (state.teamOp[date]/ts*100).toFixed(1)+'%' : '—';
@@ -12328,35 +12326,42 @@ async function importCallSheetExcel(file, year, month) {
       const d2 = parseInt(dm[2]);
       if (m2 !== month) return;
 
-      // 稼働時間(values[1])はSEが正本のため取込しない。callのみでスキップ判定
-      const call  = parseFloat(values[2]) || 0;
-      if (call === 0) return;
+      // 稼働時間(values[1])はSEが正本のため取込しない
+      // 全指標を読み込み、本当に全部0の行だけスキップ（修正データも正しく反映）
+      const call      = parseFloat(values[2])  || 0;
+      const connect   = parseFloat(values[4])  || 0;
+      const irai_done = parseFloat(values[5])  || 0;
+      const kaishuu   = parseFloat(values[6])  || 0;
+      const mikomi_a  = parseFloat(values[8])  || 0;
+      const mikomi_b  = parseFloat(values[9])  || 0;
+      const mikomi_c  = parseFloat(values[10]) || 0;
+      const irai_kazu = parseFloat(values[11]) || 0;
+      const haru_ok   = parseFloat(values[13]) || 0;
+      const haru_ng   = parseFloat(values[14]) || 0;
+      const other_ok  = parseFloat(values[15]) || 0;
+      const other_ng  = parseFloat(values[16]) || 0;
+      const ng        = parseFloat(values[17]) || 0;
+      const action    = String(values[18] || "");
+
+      // 全指標が0かつアクションも空 → 本当に空の行なのでスキップ
+      const hasData = call || connect || irai_done || kaishuu ||
+                      mikomi_a || mikomi_b || mikomi_c || irai_kazu ||
+                      haru_ok || haru_ng || other_ok || other_ng || ng || action.trim();
+      if (!hasData) return;
 
       const dateStr = `${year}-${String(m2).padStart(2,"0")}-${String(d2).padStart(2,"0")}`;
       const key = `${curMemberId}|${dateStr}`;
 
+      // 常に上書き保存（GSheets修正データを正確に反映・旧誤データをクリア）
       state.entries[key] = {
-        call,
-        connect:   parseFloat(values[4]) || 0,
-        irai_done: parseFloat(values[5]) || 0,
-        kaishuu:   parseFloat(values[6]) || 0,
-        mikomi_a:  parseFloat(values[8]) || 0,
-        mikomi_b:  parseFloat(values[9]) || 0,
-        mikomi_c:  parseFloat(values[10])|| 0,
-        irai_kazu: parseFloat(values[11])|| 0,
-        haru_ok:   parseFloat(values[13])|| 0,
-        haru_ng:   parseFloat(values[14])|| 0,
-        other_ok:  parseFloat(values[15])|| 0,
-        other_ng:  parseFloat(values[16])|| 0,
-        ng:        parseFloat(values[17])|| 0,
-        action:    String(values[18] || ""),
+        call, connect, irai_done, kaishuu,
+        mikomi_a, mikomi_b, mikomi_c, irai_kazu,
+        haru_ok, haru_ng, other_ok, other_ng, ng, action,
       };
-      // dailyReportsにも hours/call/connect を同期
       if (!state.dailyReports) state.dailyReports = {};
       if (!state.dailyReports[key]) state.dailyReports[key] = {};
-      // state.dailyReports[key].hours はSEから算出するため不要
       state.dailyReports[key].call    = call;
-      state.dailyReports[key].connect = parseFloat(values[4]) || 0;
+      state.dailyReports[key].connect = connect;
       imported++;
     });
   });
@@ -14239,10 +14244,11 @@ async function startFirestoreSync() {
     });
     saveStateLocal();
     updateSyncIndicator(true);
-    const ap = document.querySelector(".page.active");
-    if (ap && ap.id !== "page-entry") refreshActivePage();
-    // 月次累計ページが開いていれば再描画
-    if (ap && ap.id === "page-monthly") renderMonthly();
+    // デバウンス: 連続更新でも最後の1回だけ再描画（SE書込609件でも1回だけ）
+    clearTimeout(window._entriesRefreshTimer);
+    window._entriesRefreshTimer = setTimeout(function() {
+      refreshActivePage();
+    }, 600);
   });
 
   // ③ dailyReports を監視：日報入力を全員に即反映
@@ -14261,7 +14267,11 @@ async function startFirestoreSync() {
       state.dailyReports[key] = rep;
     });
     saveStateLocal();
-    refreshActivePage();
+    // デバウンス: 複数の日報更新が同時に来ても1回だけ再描画
+    clearTimeout(window._reportsRefreshTimer);
+    window._reportsRefreshTimer = setTimeout(function() {
+      refreshActivePage();
+    }, 300);
     updateSyncIndicator(true);
   });
 
