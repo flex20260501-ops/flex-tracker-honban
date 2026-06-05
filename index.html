@@ -10291,7 +10291,11 @@ function renderEntryContent() {
 
   // ── 月次累計サマリを下段に追加 (v94)
   (function addMonthlySummary() {
-    var mo = state.currentMonth || (new Date().getMonth() + 1);
+    // 表示中の日付から月を取得（日付ピッカーの日付 or currentMonth）
+    var dateInput = document.getElementById('entry-date');
+    var mo = dateInput && dateInput.value
+      ? parseInt(dateInput.value.split('-')[1])
+      : (state.currentMonth || (new Date().getMonth() + 1));
     var members = (state.members || []).filter(function(m) { return m && m.name && m.id; });
     if (!members.length) {
       html += '<div style="margin-top:16px;padding:12px;color:var(--text-dim);">⏳ 月次サマリ読込中...</div>';
@@ -10359,7 +10363,7 @@ function renderEntryContent() {
     } catch(ex) { console.warn('月次サマリエラー:', ex.message); }
   })();
 
-    document.getElementById("entry-content").innerHTML = html;
+  document.getElementById("entry-content").innerHTML = html;
 }
 
 // ═══════════════════════════════════════════════════════════
