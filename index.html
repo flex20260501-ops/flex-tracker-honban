@@ -8843,14 +8843,11 @@ function aggregateMonth(memberId, month) {
   const pf = v => parseFloat(v) || 0;
   const counted = new Set(); // 処理済み日付
 
-  // ① 稼働時間の加算：state.entries(Firebase由来) と SPREADSHEET_ENTRIES の両方を使用
-  // 優先順位: Firebase shared_entries → SPREADSHEET_ENTRIES静的データ
+  // ① 稼働時間の加算：SPREADSHEET_ENTRIES（管理表）のみを正本とする
+  // state.entries.hoursは使用しない（GSheets取込値は不正確な場合があるため）
   const mForAgg = (state.members || []).find(function(m) { return m.id === memberId; });
   const nn4agg = mForAgg && mForAgg.name ? mForAgg.name.replace(/　/g,'').replace(/ /g,'') : null;
   const seAll = window.SPREADSHEET_ENTRIES || {};
-
-  // SEから当月のこのメンバーの全日付を収集
-  const seDateHours = {}; // date → hours (SEから)
   if (nn4agg) {
     for (const seKey in seAll) {
       const bar = seKey.lastIndexOf('|');
@@ -8861,22 +8858,10 @@ function aggregateMonth(memberId, month) {
       const seName = seKey.slice(0,bar).replace(/　/g,'').replace(/ /g,'');
       if (seName !== nn4agg) continue;
       const seH = parseFloat((seAll[seKey]||{}).hours||0);
-      if (seH > 0) seDateHours[seDate] = seH;
-    }
-  }
-
-  // Firebase state.entries.hours を優先、なければ SE を使用
-  const allDates = new Set([
-    ...Object.keys(seDateHours),
-    ...Object.keys(state.entries||{}).filter(k => k.startsWith(memberId+'|')).map(k => k.split('|')[1]).filter(d => parseInt(d.split('-')[0])===year && parseInt(d.split('-')[1])===month)
-  ]);
-  for (const d of allDates) {
-    const fbH = parseFloat(((state.entries||{})[memberId+'|'+d]||{}).hours||0);
-    const seH = seDateHours[d] || 0;
-    const h = fbH > 0 ? fbH : seH; // Firebase優先
-    if (h > 0) {
-      agg.hours += h;
-      counted.add(d);
+      if (seH > 0) {
+        agg.hours += seH;
+        counted.add(seDate);
+      }
     }
   }
 
@@ -12343,16 +12328,14 @@ async function importCallSheetExcel(file, year, month) {
       const d2 = parseInt(dm[2]);
       if (m2 !== month) return;
 
-      // 空行スキップ
-      const hours = parseFloat(values[1]) || 0;
+      // 稼働時間(values[1])はSEが正本のため取込しない。callのみでスキップ判定
       const call  = parseFloat(values[2]) || 0;
-      if (hours === 0 && call === 0) return;
+      if (call === 0) return;
 
       const dateStr = `${year}-${String(m2).padStart(2,"0")}-${String(d2).padStart(2,"0")}`;
       const key = `${curMemberId}|${dateStr}`;
 
       state.entries[key] = {
-        hours,
         call,
         connect:   parseFloat(values[4]) || 0,
         irai_done: parseFloat(values[5]) || 0,
@@ -12371,7 +12354,7 @@ async function importCallSheetExcel(file, year, month) {
       // dailyReportsにも hours/call/connect を同期
       if (!state.dailyReports) state.dailyReports = {};
       if (!state.dailyReports[key]) state.dailyReports[key] = {};
-      state.dailyReports[key].hours   = hours;
+      // state.dailyReports[key].hours はSEから算出するため不要
       state.dailyReports[key].call    = call;
       state.dailyReports[key].connect = parseFloat(values[4]) || 0;
       imported++;
