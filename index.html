@@ -10289,6 +10289,93 @@ function renderEntryContent() {
     html += `</table></div></div>`;
   });
 
+  // ── 月次累計サマリを下段に追加 ────────────────────────────────────────
+  const month = state.currentMonth || new Date().getMonth() + 1;
+  const year  = new Date().getFullYear();
+  const activeMembers = (state.members || []).filter(m => m.active && m.name && m.role !== 'admin');
+
+  if (activeMembers.length > 0) {
+    // aggregateMonthFromReports で各メンバーの月累計を取得
+    const sumRows = activeMembers.map(m => ({ m, dr: aggregateMonthFromReports(m.id, month) }));
+    const st = sumRows.reduce((t,r) => {
+      t.hours          += r.dr.hours          || 0;
+      t.seiyaku        += r.dr.seiyaku        || 0;
+      t.seiyaku_dentou += r.dr.seiyaku_dentou || 0;
+      t.dentou_plan    += r.dr.dentou_plan    || 0;
+      t.seiyaku_douryoku += r.dr.seiyaku_douryoku || 0;
+      t.maekaku_ok     += r.dr.maekaku_ok     || 0;
+      t.pass           += r.dr.pass           || 0;
+      t.goukaku_cxl    += r.dr.goukaku_cxl    || 0;
+      return t;
+    }, {hours:0,seiyaku:0,seiyaku_dentou:0,dentou_plan:0,seiyaku_douryoku:0,maekaku_ok:0,pass:0,goukaku_cxl:0});
+
+    const _n  = v => Math.round(v || 0);
+    const _f  = (v,d=2) => (v||0).toFixed(d);
+    const _pct = (a,b) => b > 0 ? ((a/b)*100).toFixed(1)+'%' : '-';
+    const _eff = (v,h) => h > 0 ? _f(v/h*8,3) : '-';
+
+    html += `
+    <div style="margin-top:20px;border-top:2px solid rgba(255,255,255,.12);padding-top:16px;">
+      <div style="font-size:14px;font-weight:800;color:var(--text);margin-bottom:10px;padding:8px 12px;background:rgba(16,185,129,.12);border-radius:8px;border-left:4px solid var(--green);">
+        📋 ${month}月 累計サマリ
+        <span style="font-size:11px;font-weight:400;opacity:.6;margin-left:8px;">日報入力ベース・自動集計</span>
+      </div>
+      <div class="table-card" style="margin:0;"><div class="table-scroll"><table>
+        <tr class="group-hd">
+          <th rowspan="2" style="min-width:80px;">名前</th>
+          <th rowspan="2">稼働H</th>
+          <th colspan="3" style="border-left:1px solid rgba(255,255,255,.15);">成約</th>
+          <th rowspan="2" style="background:rgba(16,185,129,.2);">電灯効率</th>
+          <th rowspan="2" style="background:rgba(255,190,0,.15);">転換率</th>
+          <th colspan="2" style="border-left:1px solid rgba(255,255,255,.15);">前確</th>
+          <th rowspan="2">パス</th>
+          <th rowspan="2">CXL</th>
+        </tr>
+        <tr>
+          <th style="border-left:1px solid rgba(255,255,255,.15);">社数</th>
+          <th>電灯</th>
+          <th>動力</th>
+          <th style="border-left:1px solid rgba(255,255,255,.15);">Close</th>
+          <th>OK</th>
+        </tr>`;
+
+    sumRows.forEach(({m, dr}) => {
+      const tenkan = _pct(dr.seiyaku, dr.maekaku_ok);
+      const eff    = _eff(dr.dentou_plan, dr.hours);
+      const dps    = dr.seiyaku > 0 ? _f(dr.seiyaku_dentou/dr.seiyaku) : '-';
+      const isLow  = dr.seiyaku > 0 && parseFloat(dps) < 1.4;
+      html += `<tr>
+        <td class="name-cell" style="font-size:12px;">${memberNameWithAvatar(m,{showBadges:false})}</td>
+        <td>${_f(dr.hours,1)}</td>
+        <td style="border-left:1px solid rgba(255,255,255,.08);font-weight:700;">${_n(dr.seiyaku)}</td>
+        <td style="color:${isLow?'var(--red)':'inherit'};">${_n(dr.seiyaku_dentou)}<span style="font-size:10px;opacity:.5;margin-left:2px;">${dps!=='-'?'('+dps+'/社)':''}</span></td>
+        <td>${_n(dr.seiyaku_douryoku)}</td>
+        <td style="background:rgba(16,185,129,.08);font-weight:700;">${eff}</td>
+        <td style="background:rgba(255,190,0,.08);font-weight:700;">${tenkan}</td>
+        <td style="border-left:1px solid rgba(255,255,255,.08);">${_n(dr.maekaku_close)}</td>
+        <td style="font-weight:700;color:var(--green);">${_n(dr.maekaku_ok)}</td>
+        <td>${_n(dr.pass)}</td>
+        <td style="color:${dr.goukaku_cxl>0?'var(--red)':'inherit'};">${_n(dr.goukaku_cxl)}</td>
+      </tr>`;
+    });
+
+    // チーム合計行
+    html += `<tr style="background:rgba(255,255,255,.1);font-weight:700;border-top:2px solid rgba(255,255,255,.2);">
+      <td>チーム合計</td>
+      <td>${_f(st.hours,1)}</td>
+      <td style="border-left:1px solid rgba(255,255,255,.08);">${_n(st.seiyaku)}</td>
+      <td>${_n(st.seiyaku_dentou)}<span style="font-size:10px;font-weight:400;margin-left:2px;">(${st.seiyaku>0?_f(st.seiyaku_dentou/st.seiyaku)+'/社':'-'})</span></td>
+      <td>${_n(st.seiyaku_douryoku)}</td>
+      <td style="background:rgba(16,185,129,.12);">${_eff(st.dentou_plan,st.hours)}</td>
+      <td style="background:rgba(255,190,0,.12);">${_pct(st.seiyaku,st.maekaku_ok)}</td>
+      <td style="border-left:1px solid rgba(255,255,255,.08);">${_n(st.maekaku_ok)}</td>
+      <td style="color:var(--green);">${_n(st.maekaku_ok)}</td>
+      <td>${_n(st.pass)}</td>
+      <td style="color:${st.goukaku_cxl>0?'var(--red)':'inherit'};">${_n(st.goukaku_cxl)}</td>
+    </tr>`;
+    html += `</table></div></div></div>`;
+  }
+
   document.getElementById("entry-content").innerHTML = html;
 }
 
