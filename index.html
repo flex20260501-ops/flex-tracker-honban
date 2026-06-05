@@ -8716,6 +8716,41 @@ async function _pushSeHoursToFirebase(year, month) {
   return pushed;
 }
 
+
+// ─── ランク履歴管理 ───────────────────────────────────────────────
+function saveRankHistory(month, rankList) {
+  // rankList: [{memberId, rank}, ...]
+  try {
+    const key = 'rankHistory_' + month;
+    const today = new Date().toISOString().slice(0,10);
+    const hist = JSON.parse(localStorage.getItem(key) || '{}');
+    hist[today] = rankList.map((r,i) => ({ id: r.m && r.m.id, rank: i+1 }));
+    localStorage.setItem(key, JSON.stringify(hist));
+  } catch(e) {}
+}
+
+function getRankChange(month, memberId, currentRank) {
+  try {
+    const key = 'rankHistory_' + month;
+    const today = new Date().toISOString().slice(0,10);
+    const hist = JSON.parse(localStorage.getItem(key) || '{}');
+    const dates = Object.keys(hist).filter(d => d < today).sort();
+    if (!dates.length) return null;
+    const prev = hist[dates[dates.length-1]];
+    const prevEntry = (prev || []).find(e => e.id === memberId);
+    if (!prevEntry) return null;
+    const diff = prevEntry.rank - currentRank; // 正=上昇、負=下降
+    return diff;
+  } catch(e) { return null; }
+}
+
+function rankChangeBadge(diff) {
+  if (diff === null || diff === undefined) return '';
+  if (diff > 0) return '<span style="color:#10b981;font-size:11px;font-weight:700;margin-left:4px;">▲'+diff+'</span>';
+  if (diff < 0) return '<span style="color:#ef4444;font-size:11px;font-weight:700;margin-left:4px;">▼'+Math.abs(diff)+'</span>';
+  return '<span style="color:#94a3b8;font-size:11px;margin-left:4px;">→</span>';
+}
+
 async function saveState() {
   await saveStateLocal();
   // If Firestore is configured and we're admin, push update
@@ -8868,8 +8903,15 @@ function aggregateMonth(memberId, month) {
     const [mId, date] = key.split('|');
     if (mId !== memberId) continue;
     if (parseInt(date.split('-')[1]) !== month) continue;
-    // hours は SE のみが正本のため state.entries.hours は使わない
-    if (!counted.has(date)) counted.add(date);
+    // SEにある月はstate.entries.hoursを無視（SEが正本）
+    // SEにない月（6月以降）はstate.entries.hoursを使用
+    if (!counted.has(date)) {
+      const seHForDate = getMgmtHours(memberId, date);
+      if (seHForDate <= 0 && pf(e.hours) > 0) {
+        agg.hours += pf(e.hours);  // SE未収録日: GSheets hoursを使用
+      }
+      counted.add(date);
+    }
     agg.call      += pf(e.call);
     agg.connect   += pf(e.connect);
     agg.irai_done += pf(e.irai_done);
@@ -9397,7 +9439,7 @@ function renderDashboard() {
 
       html += `<div class="rank-row ${cls}" style="grid-template-columns: 60px 1fr 80px 80px 80px 80px 90px;cursor:pointer;" onclick="showMemberRadar(state.members.find(m=>m.id==='${r.m.id}'), ${month}, '')">
         <div class="rank-badge">${i+1}</div>
-        <div class="rank-name">${memberNameWithAvatar(r.m)}</div>
+        <div class="rank-name">${memberNameWithAvatar(r.m)}${rankChangeBadge(getRankChange(month, r.m && r.m.id, i+1))}</div>
         <div class="rank-metric" style="font-weight:700;color:var(--accent);">${r.a.seiyaku || 0}</div>
         <div class="rank-metric">${(r.a.efficiency || 0).toFixed(3)}</div>
         <div class="rank-metric dim">${dentou8h.toFixed(3)}</div>
@@ -10013,6 +10055,8 @@ function renderMaekakuRanking() {
 
   html += '</tbody>';
   el.innerHTML = html;
+  // 今日のランクを保存（翌日の変動計算用）
+  saveRankHistory(month, rows);
 }
 
 function renderPassRanking() {
@@ -11693,6 +11737,11 @@ function aggregateMonthFromReports(memberId, month) {
         agg.meisai_kaishuu += parseFloat(ent.kaishuu || 0);
         agg.days++;
       }
+      // bd4[date]が0（SEに日付なし）でもentries.hoursがあれば使用（6月等）
+      if (!bd4[date] && !datesWithReport.has(date)) {
+        const ent = getEntry(memberId, date);
+        if (ent && ent.hours > 0) agg.hours += parseFloat(ent.hours);
+      }
     }
   }
 
@@ -12348,8 +12397,13 @@ async function importCallSheetExcel(file, year, month) {
       const d2 = parseInt(dm[2]);
       if (m2 !== month) return;
 
-      // 稼働時間(values[1])はSEが正本のため取込しない
-      // 全指標を読み込み、本当に全部0の行だけスキップ（修正データも正しく反映）
+      // 稼働時間: SEが4・5月をカバーしている月はGSheets hours不要
+      // 6月以降（SEに未収録）はGSheets hoursを取込む
+      const SE_MONTHS = Object.keys(CALL_SHEET_URLS || {})
+        .filter(k => window.SPREADSHEET_ENTRIES && Object.keys(window.SPREADSHEET_ENTRIES).some(sk => sk.includes('|'+k+'-')));
+      const ym = year+'-'+String(month).padStart(2,'0');
+      const seCoversThisMonth = SE_MONTHS.includes(ym);
+      const hoursFromGS = seCoversThisMonth ? 0 : (parseFloat(values[1]) || 0);
       const call      = parseFloat(values[2])  || 0;
       const connect   = parseFloat(values[4])  || 0;
       const irai_done = parseFloat(values[5])  || 0;
@@ -12374,8 +12428,9 @@ async function importCallSheetExcel(file, year, month) {
       const dateStr = `${year}-${String(m2).padStart(2,"0")}-${String(d2).padStart(2,"0")}`;
       const key = `${curMemberId}|${dateStr}`;
 
-      // 常に上書き保存（GSheets修正データを正確に反映・旧誤データをクリア）
+      // 上書き保存（修正データを正確に反映）
       state.entries[key] = {
+        hours: hoursFromGS,  // SE未収録月はGSheets hours（SE収録月は0）
         call, connect, irai_done, kaishuu,
         mikomi_a, mikomi_b, mikomi_c, irai_kazu,
         haru_ok, haru_ng, other_ok, other_ng, ng, action,
@@ -12384,6 +12439,8 @@ async function importCallSheetExcel(file, year, month) {
       if (!state.dailyReports[key]) state.dailyReports[key] = {};
       state.dailyReports[key].call    = call;
       state.dailyReports[key].connect = connect;
+      // 即時Firebase書込（デバウンスなし）
+      _pushEntry(curMemberId, dateStr).catch(e => console.warn('entry push:', e));
       imported++;
     });
   });
