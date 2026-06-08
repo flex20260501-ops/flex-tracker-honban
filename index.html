@@ -8753,6 +8753,102 @@ function rankChangeBadge(diff) {
   return '<span style="'+base+'background:#f1f5f9;color:#64748b;">－</span>';
 }
 
+
+// ─── 日報ページ 月次累計サマリ（後付け方式） ───────────────────────────────
+function appendSummaryToEntry() {
+  var el = document.getElementById('entry-content');
+  if (!el) return;
+  // 既にサマリがあれば更新しない
+  if (el.querySelector('#monthly-summary-block')) {
+    el.querySelector('#monthly-summary-block').remove();
+  }
+  var dateInput = document.getElementById('entry-date');
+  var mo = dateInput && dateInput.value
+    ? parseInt(dateInput.value.split('-')[1])
+    : (state.currentMonth || (new Date().getMonth() + 1));
+  var members = (state.members || []).filter(function(m) { return m && m.name && m.id; });
+  var block = document.createElement('div');
+  block.id = 'monthly-summary-block';
+  block.style.cssText = 'margin-top:20px;border-top:2px solid rgba(255,255,255,.12);padding-top:14px;';
+  if (!members.length) {
+    block.innerHTML = '<div style="padding:12px;color:var(--text-dim);">⏳ メンバー読込中...</div>';
+    el.appendChild(block);
+    return;
+  }
+  var rows = members.map(function(m) {
+    var dr = {};
+    try { dr = aggregateMonthFromReports(m.id, mo); } catch(e) { dr = {}; }
+    return { m: m, dr: dr };
+  });
+  var tot = rows.reduce(function(t,r) {
+    ['hours','seiyaku','seiyaku_dentou','dentou_plan','seiyaku_douryoku',
+     'maekaku_close','maekaku_ok','pass','goukaku_cxl'].forEach(function(k) {
+      t[k] = (t[k]||0) + (r.dr[k]||0);
+    });
+    return t;
+  }, {});
+  var ni  = function(v) { return Math.round(v||0); };
+  var f1  = function(v) { return ((v||0).toFixed(1)); };
+  var f2  = function(v) { return ((v||0).toFixed(2)); };
+  var pct = function(a,b) { return b>0 ? ((a/b)*100).toFixed(1)+'%' : '-'; };
+  var eff = function(v,h) { return h>0 ? (v/h*8).toFixed(3) : '-'; };
+  var nm  = function(m) { return (m.name||'').replace(/\u3000/g,' '); };
+  var h = '<div style="font-size:14px;font-weight:800;color:var(--text);margin-bottom:10px;'
+        + 'padding:8px 14px;background:rgba(16,185,129,.12);border-radius:8px;'
+        + 'border-left:4px solid var(--green);">'
+        + '📋 ' + mo + '月 月次累計サマリ'
+        + '<span style="font-size:11px;font-weight:400;opacity:.6;margin-left:8px;">日報入力ベース・自動集計</span></div>';
+  h += '<div class="table-card" style="margin:0;"><div class="table-scroll"><table>';
+  h += '<tr class="group-hd"><th rowspan="2">名前</th><th rowspan="2">稼働H</th>'
+     + '<th rowspan="2">成約</th><th colspan="2">電灯</th><th rowspan="2">動力</th>'
+     + '<th rowspan="2" style="background:rgba(16,185,129,.2);">電灯効率</th>'
+     + '<th rowspan="2" style="background:rgba(255,190,0,.15);">転換率</th>'
+     + '<th rowspan="2">前確<br>Close</th><th rowspan="2">前確<br>OK</th>'
+     + '<th rowspan="2">パス</th><th rowspan="2">CXL</th></tr>'
+     + '<tr><th>電灯本数</th><th>1社あたり</th></tr>';
+  rows.forEach(function(row) {
+    var dr = row.dr;
+    var dps = (dr.seiyaku||0)>0 ? f2((dr.seiyaku_dentou||0)/(dr.seiyaku||1)) : '-';
+    var isL = (dr.seiyaku||0)>0 && parseFloat(dps)<1.4;
+    h += '<tr>'
+       + '<td style="font-size:12px;white-space:nowrap;">' + nm(row.m) + '</td>'
+       + '<td>' + f1(dr.hours||0) + '</td>'
+       + '<td style="font-weight:700;">' + ni(dr.seiyaku) + '</td>'
+       + '<td>' + ni(dr.seiyaku_dentou) + '</td>'
+       + '<td style="color:' + (isL?'var(--red)':'inherit') + ';">' + dps + '</td>'
+       + '<td>' + ni(dr.seiyaku_douryoku) + '</td>'
+       + '<td style="background:rgba(16,185,129,.06);font-weight:700;">' + eff(dr.dentou_plan,dr.hours) + '</td>'
+       + '<td style="background:rgba(255,190,0,.06);font-weight:700;">' + pct(dr.seiyaku,dr.maekaku_ok) + '</td>'
+       + '<td>' + ((dr.maekaku_close||0)>0?ni(dr.maekaku_close):'-') + '</td>'
+       + '<td style="font-weight:700;color:var(--green);">' + ((dr.maekaku_ok||0)>0?ni(dr.maekaku_ok):'-') + '</td>'
+       + '<td style="color:' + ((dr.pass||0)>0?'var(--accent)':'inherit') + ';">' + ((dr.pass||0)>0?ni(dr.pass):'-') + '</td>'
+       + '<td style="color:' + ((dr.goukaku_cxl||0)>0?'var(--red)':'inherit') + ';">' + ((dr.goukaku_cxl||0)>0?ni(dr.goukaku_cxl):'-') + '</td>'
+       + '</tr>';
+  });
+  var ok = ni(tot.pass||0)===ni(tot.maekaku_close||0);
+  h += '<tr style="background:rgba(255,255,255,.1);font-weight:700;border-top:2px solid rgba(255,255,255,.2);">'
+     + '<td>チーム合計</td>'
+     + '<td>' + f1(tot.hours||0) + '</td>'
+     + '<td>' + ni(tot.seiyaku) + '</td>'
+     + '<td>' + ni(tot.seiyaku_dentou) + '</td>'
+     + '<td>' + ((tot.seiyaku||0)>0?f2((tot.seiyaku_dentou||0)/(tot.seiyaku||1)):'-') + '</td>'
+     + '<td>' + ni(tot.seiyaku_douryoku) + '</td>'
+     + '<td style="background:rgba(16,185,129,.1);">' + eff(tot.dentou_plan,tot.hours) + '</td>'
+     + '<td style="background:rgba(255,190,0,.1);">' + pct(tot.seiyaku,tot.maekaku_ok) + '</td>'
+     + '<td>' + ni(tot.maekaku_close||0) + '</td>'
+     + '<td style="color:var(--green);">' + ni(tot.maekaku_ok||0) + '</td>'
+     + '<td style="color:var(--accent);">' + ni(tot.pass||0) + '</td>'
+     + '<td style="color:' + (ok?'inherit':'var(--red)') + ';">' + ni(tot.maekaku_close||0) + (ok?'':' ⚠') + '</td>'
+     + '</tr>';
+  if (!ok) {
+    h += '<tr><td colspan="12" style="font-size:11px;color:#f59e0b;padding:4px 10px;">'
+       + '⚠ 供給パス(' + ni(tot.pass||0) + ')≠前確受Close(' + ni(tot.maekaku_close||0) + ')</td></tr>';
+  }
+  h += '</table></div></div>';
+  block.innerHTML = h;
+  el.appendChild(block);
+}
+
 async function saveState() {
   await saveStateLocal();
   // If Firestore is configured and we're admin, push update
@@ -10289,81 +10385,9 @@ function renderEntryContent() {
     html += `</table></div></div>`;
   });
 
-  // ── 月次累計サマリを下段に追加 (v94)
-  (function addMonthlySummary() {
-    // 表示中の日付から月を取得（日付ピッカーの日付 or currentMonth）
-    var dateInput = document.getElementById('entry-date');
-    var mo = dateInput && dateInput.value
-      ? parseInt(dateInput.value.split('-')[1])
-      : (state.currentMonth || (new Date().getMonth() + 1));
-    var members = (state.members || []).filter(function(m) { return m && m.name && m.id; });
-    if (!members.length) {
-      html += '<div style="margin-top:16px;padding:12px;color:var(--text-dim);">⏳ 月次サマリ読込中...</div>';
-      return;
-    }
-    try {
-      var rows = members.map(function(m) { return { m: m, dr: aggregateMonthFromReports(m.id, mo) }; });
-      var tot  = rows.reduce(function(t, r) {
-        ['hours','seiyaku','seiyaku_dentou','dentou_plan','seiyaku_douryoku',
-         'maekaku_close','maekaku_ok','pass','goukaku_cxl'].forEach(function(k) { t[k] += (r.dr[k]||0); });
-        return t;
-      }, {hours:0,seiyaku:0,seiyaku_dentou:0,dentou_plan:0,seiyaku_douryoku:0,
-          maekaku_close:0,maekaku_ok:0,pass:0,goukaku_cxl:0});
-      var ni  = function(v) { return Math.round(v||0); };
-      var f2  = function(v,d) { return ((v||0).toFixed(d!==undefined?d:2)); };
-      var pct = function(a,b) { return b>0 ? f2(a/b*100,1)+'%' : '-'; };
-      var eff = function(v,h) { return h>0 ? f2(v/h*8,3) : '-'; };
-      var h  = '<div style="margin-top:20px;border-top:2px solid rgba(255,255,255,.12);padding-top:14px;">';
-      h += '<div style="font-size:14px;font-weight:800;color:var(--text);margin-bottom:10px;padding:8px 14px;background:rgba(16,185,129,.12);border-radius:8px;border-left:4px solid var(--green);">';
-      h += '📋 ' + mo + '月 月次累計サマリ<span style="font-size:11px;font-weight:400;opacity:.6;margin-left:8px;">日報入力ベース・自動集計</span></div>';
-      h += '<div class="table-card" style="margin:0;"><div class="table-scroll"><table>';
-      h += '<tr class="group-hd"><th rowspan="2">名前</th><th rowspan="2">稼働H</th><th rowspan="2">成約社数</th>';
-      h += '<th colspan="2">電灯</th><th rowspan="2">動力</th>';
-      h += '<th rowspan="2" style="background:rgba(16,185,129,.2);">電灯効率</th>';
-      h += '<th rowspan="2" style="background:rgba(255,190,0,.15);">転換率</th>';
-      h += '<th colspan="2">前確</th>';
-      h += '<th rowspan="2">パス</th><th rowspan="2">受Close</th><th rowspan="2">CXL</th></tr>';
-      h += '<tr><th>電灯本数</th><th>1社あたり</th><th>Close</th><th>OK</th></tr>';
-      rows.forEach(function(row) {
-        var dr = row.dr;
-        var dps = dr.seiyaku>0 ? f2(dr.seiyaku_dentou/dr.seiyaku) : '-';
-        var isL = dr.seiyaku>0 && parseFloat(dps)<1.4;
-        h += '<tr>';
-        h += '<td class="name-cell" style="font-size:12px;">' + memberNameWithAvatar(row.m,{showBadges:false}) + '</td>';
-        h += '<td>' + f2(dr.hours,1) + '</td>';
-        h += '<td style="font-weight:700;">' + ni(dr.seiyaku) + '</td>';
-        h += '<td>' + ni(dr.seiyaku_dentou) + '</td>';
-        h += '<td style="color:' + (isL?'var(--red)':'inherit') + ';">' + dps + '</td>';
-        h += '<td>' + ni(dr.seiyaku_douryoku) + '</td>';
-        h += '<td style="background:rgba(16,185,129,.06);font-weight:700;">' + eff(dr.dentou_plan,dr.hours) + '</td>';
-        h += '<td style="background:rgba(255,190,0,.06);font-weight:700;">' + pct(dr.seiyaku,dr.maekaku_ok) + '</td>';
-        h += '<td>' + (dr.maekaku_close>0?ni(dr.maekaku_close):'-') + '</td>';
-        h += '<td style="font-weight:700;color:var(--green);">' + (dr.maekaku_ok>0?ni(dr.maekaku_ok):'-') + '</td>';
-        h += '<td style="color:' + (dr.pass>0?'var(--accent)':'inherit') + ';">' + (dr.pass>0?ni(dr.pass):'-') + '</td>';
-        h += '<td>' + (dr.maekaku_close>0?ni(dr.maekaku_close):'-') + '</td>';
-        h += '<td style="color:' + (dr.goukaku_cxl>0?'var(--red)':'inherit') + ';">' + (dr.goukaku_cxl>0?ni(dr.goukaku_cxl):'-') + '</td>';
-        h += '</tr>';
-      });
-      var ok = ni(tot.pass)===ni(tot.maekaku_close);
-      h += '<tr style="background:rgba(255,255,255,.1);font-weight:700;border-top:2px solid rgba(255,255,255,.2);">';
-      h += '<td>チーム合計</td><td>' + f2(tot.hours,1) + '</td><td>' + ni(tot.seiyaku) + '</td>';
-      h += '<td>' + ni(tot.seiyaku_dentou) + '</td>';
-      h += '<td>' + (tot.seiyaku>0?f2(tot.seiyaku_dentou/tot.seiyaku):'-') + '</td>';
-      h += '<td>' + ni(tot.seiyaku_douryoku) + '</td>';
-      h += '<td style="background:rgba(16,185,129,.1);">' + eff(tot.dentou_plan,tot.hours) + '</td>';
-      h += '<td style="background:rgba(255,190,0,.1);">' + pct(tot.seiyaku,tot.maekaku_ok) + '</td>';
-      h += '<td>' + ni(tot.maekaku_close) + '</td><td style="color:var(--green);">' + ni(tot.maekaku_ok) + '</td>';
-      h += '<td style="color:var(--accent);">' + ni(tot.pass) + '</td>';
-      h += '<td style="color:' + (ok?'inherit':'var(--red)') + ';">' + ni(tot.maekaku_close) + (ok?'':' ⚠') + '</td>';
-      h += '<td style="color:' + (tot.goukaku_cxl>0?'var(--red)':'inherit') + ';">' + (tot.goukaku_cxl>0?ni(tot.goukaku_cxl):'-') + '</td>';
-      h += '</tr>';
-      if (!ok) h += '<tr><td colspan="13" style="font-size:11px;color:#f59e0b;padding:4px 10px;">⚠ 供給パス(' + ni(tot.pass) + ')≠前確受Close(' + ni(tot.maekaku_close) + ') — 入力漏れの可能性</td></tr>';
-      h += '</table></div></div></div>';
-      html += h;
-    } catch(ex) { console.warn('月次サマリエラー:', ex.message); }
-  })();
-
   document.getElementById("entry-content").innerHTML = html;
+  // サマリは別途appendSummaryToEntry()で追加
+  setTimeout(appendSummaryToEntry, 100);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -14600,7 +14624,7 @@ function refreshActivePage() {
     else if (pageId === "period-cumulative") renderPeriodCumulative();
     else if (pageId === "members") renderMembers();
     else if (pageId === "archive") renderArchive();
-    else if (pageId === "entry") renderEntryContent();
+    else if (pageId === "entry") { renderEntryContent(); }
     else if (pageId === "daily-report-input") initDailyReportPage();
     else if (pageId === "daily-import") renderDailyImport();
     else if (pageId === "payroll") renderPayroll();
