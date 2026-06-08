@@ -1722,7 +1722,7 @@
       <div class="week-selector" id="entry-week-selector"></div>
 
       <div id="entry-content"></div>
-      <div id="entry-monthly-summary"></div>
+      <div id="entry-monthly-summary" style="display:none;"></div>
     </div>
 
     <!-- Monthly Cumulative -->
@@ -10378,8 +10378,77 @@ function renderEntryContent() {
     html += `</table></div></div>`;
   });
 
+  // ─── 月次累計サマリ（inline版）───────────────────────────────────────────
+  try {
+    var _dateEl = document.getElementById('entry-date');
+    var _selDate = (_dateEl && _dateEl.value) ? _dateEl.value : new Date().toISOString().slice(0,10);
+    var _cumY = parseInt(_selDate.split('-')[0]);
+    var _cumM = parseInt(_selDate.split('-')[1]);
+    var _allM = (state.members || []).filter(function(m){ return m && m.id && m.name; });
+    if (_allM.length > 0) {
+      var _cum = {};
+      _allM.forEach(function(m){ _cum[m.id] = {h:0,ca:0,co:0,pa:0,mo:0,go:0,de:0,dy:0,se:0,sd:0,mk:0}; });
+      var _pf = function(v){ return parseFloat(v)||0; };
+      // 日報から集計
+      Object.entries(state.dailyReports||{}).forEach(function(kv){
+        var parts=kv[0].split('|'), mId=parts[0], d=parts[1];
+        if(!_cum[mId]||!d) return;
+        if(parseInt(d.split('-')[0])!==_cumY||parseInt(d.split('-')[1])!==_cumM) return;
+        var c=_cum[mId], r=kv[1], mh=getMgmtHours(mId,d);
+        c.h +=mh>0?mh:_pf(r.hours);
+        c.pa+=_pf(r.pass); c.mo+=_pf(r.maekaku_ok); c.go+=_pf(r.goukaku_ok);
+        c.de+=_pf(r.dentou_plan); c.dy+=_pf(r.douryoku);
+        c.se+=_pf(r.seiyaku); c.sd+=_pf(r.seiyaku_dentou); c.mk+=_pf(r.meisai_kaishuu);
+      });
+      // entriesからcall/connect
+      Object.entries(state.entries||{}).forEach(function(kv){
+        var parts=kv[0].split('|'), mId=parts[0], d=parts[1];
+        if(!_cum[mId]||!d) return;
+        if(parseInt(d.split('-')[0])!==_cumY||parseInt(d.split('-')[1])!==_cumM) return;
+        var c=_cum[mId], e=kv[1]; c.ca+=_pf(e.call); c.co+=_pf(e.connect);
+      });
+      // テーブル描画
+      var _ni=function(v){return Math.round(v||0);}, _f1=function(v){return (v||0).toFixed(1);}, _f2=function(v){return (v||0).toFixed(2);};
+      var _pct=function(a,b){return b>0?((a/b)*100).toFixed(1)+'%':'-';};
+      var _eff=function(v,h){return h>0?(v/h*8).toFixed(3):'-';};
+      var _tt={h:0,ca:0,co:0,pa:0,mo:0,go:0,de:0,dy:0,se:0,sd:0,mk:0};
+      _allM.forEach(function(m){Object.keys(_tt).forEach(function(k){_tt[k]+=(_cum[m.id]&&_cum[m.id][k]||0);});});
+      html+='<div style="margin-top:18px;border-top:2px solid rgba(255,255,255,.12);padding-top:12px;">';
+      html+='<div style="font-size:14px;font-weight:800;color:var(--text);margin-bottom:8px;padding:7px 12px;background:rgba(16,185,129,.12);border-radius:8px;border-left:4px solid var(--green);">📋 '+_cumM+'月 月次累計サマリ <span style="font-size:11px;font-weight:400;opacity:.6;">日報入力ベース</span></div>';
+      html+='<div class="table-card" style="margin:0;"><div class="table-scroll"><table>';
+      html+='<tr class="group-hd"><th rowspan="2">名前</th><th rowspan="2">稼働H</th><th rowspan="2">コール</th><th rowspan="2">コネクト</th><th rowspan="2">成約</th><th colspan="2">電灯</th><th rowspan="2">動力</th><th rowspan="2" style="background:rgba(16,185,129,.18);">電灯効率</th><th rowspan="2" style="background:rgba(255,190,0,.15);">転換率</th><th rowspan="2">前確OK</th><th rowspan="2">パス</th></tr>';
+      html+='<tr><th>電灯本数</th><th>1社あたり</th></tr>';
+      _allM.forEach(function(m){
+        var c=_cum[m.id]||{};
+        var dps=(c.se||0)>0?_f2((c.sd||0)/(c.se||1)):'-';
+        var isL=(c.se||0)>0&&parseFloat(dps)<1.4;
+        html+='<tr>';
+        html+='<td style="font-size:12px;white-space:nowrap;">'+(m.name||'').replace(/　/g,' ')+'</td>';
+        html+='<td>'+_f1(c.h||0)+'</td><td>'+_ni(c.ca)+'</td><td>'+_ni(c.co)+'</td>';
+        html+='<td style="font-weight:700;">'+_ni(c.se)+'</td>';
+        html+='<td>'+_ni(c.sd)+'</td>';
+        html+='<td style="color:'+(isL?'var(--red)':'inherit')+';">'+dps+'</td>';
+        html+='<td>'+_ni(c.dy)+'</td>';
+        html+='<td style="background:rgba(16,185,129,.06);font-weight:700;">'+_eff(c.de,c.h)+'</td>';
+        html+='<td style="background:rgba(255,190,0,.06);font-weight:700;">'+_pct(c.se,c.mo)+'</td>';
+        html+='<td style="color:var(--green);font-weight:700;">'+_ni(c.mo)+'</td>';
+        html+='<td style="color:var(--accent);">'+_ni(c.pa)+'</td>';
+        html+='</tr>';
+      });
+      var _tdps=(_tt.se>0)?_f2(_tt.sd/_tt.se):'-';
+      html+='<tr style="background:rgba(255,255,255,.1);font-weight:700;border-top:2px solid rgba(255,255,255,.2);">';
+      html+='<td>チーム合計</td><td>'+_f1(_tt.h)+'</td><td>'+_ni(_tt.ca)+'</td><td>'+_ni(_tt.co)+'</td>';
+      html+='<td>'+_ni(_tt.se)+'</td><td>'+_ni(_tt.sd)+'</td><td>'+_tdps+'</td>';
+      html+='<td>'+_ni(_tt.dy)+'</td>';
+      html+='<td style="background:rgba(16,185,129,.1);">'+_eff(_tt.de,_tt.h)+'</td>';
+      html+='<td style="background:rgba(255,190,0,.1);">'+_pct(_tt.se,_tt.mo)+'</td>';
+      html+='<td style="color:var(--green);">'+_ni(_tt.mo)+'</td>';
+      html+='<td style="color:var(--accent);">'+_ni(_tt.pa)+'</td>';
+      html+='</tr></table></div></div></div>';
+    }
+  } catch(_e){ console.warn('cumData error:', _e.message); }
+
   document.getElementById("entry-content").innerHTML = html;
-  appendSummaryToEntry(); // 直接呼び出し（同期）
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -12900,7 +12969,12 @@ async function exportDailyReportExcel() {
     if (!cumData[mId]) continue;
     if (parseInt(dd.split('-')[1]) !== month || parseInt(dd.split('-')[0]) !== year) continue;
     const c = cumData[mId];
-    Object.keys(c).forEach(k => { c[k] += pf(rep[k]); });
+    // hours: SE管理表 > dailyReports.hours > entries.hours の優先順位
+    const mgmtH = getMgmtHours(mId, dd);
+    const entH  = pf(((state.entries||{})[mId+'|'+dd]||{}).hours);
+    c.hours += mgmtH > 0 ? mgmtH : (pf(rep.hours) > 0 ? pf(rep.hours) : entH);
+    // それ以外のフィールドは通常通り
+    Object.keys(c).filter(k=>k!=='hours').forEach(k => { c[k] += pf(rep[k]); });
     if (!datesWithReport[mId]) datesWithReport[mId] = new Set();
     datesWithReport[mId].add(dd);
   }
@@ -12911,7 +12985,9 @@ async function exportDailyReportExcel() {
     if (parseInt(dd.split('-')[1]) !== month || parseInt(dd.split('-')[0]) !== year) continue;
     if (datesWithReport[mId] && datesWithReport[mId].has(dd)) continue;
     const c = cumData[mId];
-    c.hours   += pf(ent.hours);
+    // SE未収録月はentries.hoursを使用（淺野・ダシルバ等の新メンバー対応）
+    const _seH = getMgmtHours(mId, dd);
+    c.hours += _seH > 0 ? _seH : pf(ent.hours);
     c.call    += pf(ent.call);
     c.connect += pf(ent.connect);
     c.meisai_kaishuu += pf(ent.kaishuu);
