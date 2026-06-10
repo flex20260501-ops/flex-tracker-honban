@@ -12557,6 +12557,9 @@ async function importCallSheetFromGSheets(year, month) {
 async function importCallSheetExcel(file, year, month) {
   const statusEl = document.getElementById("call-sheet-status");
   statusEl.innerHTML = "⏳ 読込中...";
+  // 取込中フラグON（onSnapshotからの古いデータ上書きを防ぐ）
+  isImporting = true;
+  _importingMonth = year + '-' + String(month).padStart(2, '0');
 
   if (!window.ExcelJS) {
     await loadScript("https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js");
@@ -12688,6 +12691,14 @@ async function importCallSheetExcel(file, year, month) {
   try { await _pushConfig(); } catch(e) { console.warn('config push:', e); }
   statusEl.innerHTML = `✅ 取込完了: ${imported}件のデータを反映しました`;
   showToast(`📋 コール管理表 ${month}月 取込完了（${imported}件）`);
+  // 取込完了後30秒はフラグを維持（onSnapshotの遅延配信に対応）
+  // 30秒後にフラグOFFし、その後は通常のリアルタイム同期に戻す
+  setTimeout(() => {
+    isImporting = false;
+    _importingMonth = null;
+    console.log('[import] 取込保護フラグOFF。通常のonSnapshot同期に戻ります。');
+    refreshActivePage();
+  }, 30000);
   refreshActivePage();
 }
 
@@ -14498,6 +14509,8 @@ let firebaseApp = null;
 let firestoreDb = null;
 let firestoreUnsubscribe = null;
 let isApplyingRemoteUpdate = false;
+let isImporting = false;          // 取込中はonSnapshotからのentries上書きをブロック
+let _importingMonth = null;       // 取込中の年月（例: "2026-06"）
 let pendingSaveTimer = null;
 
 async function initFirebase() {
@@ -14581,6 +14594,12 @@ async function startFirestoreSync() {
       if (!d || !d.memberId || !d.date) return;
       // entries は全デバイスで同一データなので updatedBy チェックをしない
       const key = d.memberId + "|" + d.date;
+      // 取込中かつ取込対象月のドキュメントはonSnapshotからの上書きをスキップ
+      // （取込直後に古いFirestoreデータが再配信されてcall=0に戻るのを防ぐ）
+      if (isImporting && _importingMonth && d.date && d.date.startsWith(_importingMonth)) {
+        addedCount++; // カウントだけして上書きしない
+        return; // forEach内なのでcontinueではなくreturn
+      }
       const entry = Object.assign({}, d);
       delete entry.memberId; delete entry.date;
       delete entry.updatedAt; delete entry.updatedBy;
