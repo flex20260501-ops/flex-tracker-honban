@@ -2109,6 +2109,30 @@
 
         
 
+        <div class="table-card" style="padding:24px;margin-top:16px;background:linear-gradient(135deg,rgba(239,68,68,.04),rgba(249,115,22,.04));border:2px solid #fca5a5;border-radius:12px;">
+          <h3 style="margin-bottom:12px;color:#dc2626;">📌 開発3原則（Claude引き継ぎ用）</h3>
+          <p style="font-size:12px;color:var(--text-dim);margin-bottom:14px;line-height:1.7;">
+            このトラッカーの開発・修正を行うClaude（AI）が必ず守るべき3つの約束。新セッション開始時に必ずこの内容を確認する。
+          </p>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <div style="background:#fef2f2;border-left:4px solid #ef4444;padding:12px 14px;border-radius:0 8px 8px 0;">
+              <div style="font-weight:800;color:#dc2626;font-size:13px;margin-bottom:4px;">① 計算ミスと実数の乖離は絶対に起こさない</div>
+              <div style="font-size:12px;color:#7f1d1d;line-height:1.6;">稼働時間・コール数・成約数など全KPIの集計値は管理表（SPREADSHEET_ENTRIES）およびインポートされた実データと必ず一致させる。aggregateMonth/aggregateWeekの修正時は全フィールドの加算元を確認し、SEとstate.entriesの役割分担を壊さない。</div>
+            </div>
+            <div style="background:#fff7ed;border-left:4px solid #f97316;padding:12px 14px;border-radius:0 8px 8px 0;">
+              <div style="font-weight:800;color:#c2410c;font-size:13px;margin-bottom:4px;">② Firebase書込は必ず成功させる（call/connect等の消失禁止）</div>
+              <div style="font-size:12px;color:#7c2d12;line-height:1.6;">_pushEntry/_pushSeHoursToFirebase等のsetDoc呼び出しは必ずmerge:trueを付ける。hoursだけのsetDocでcall/connect等を上書き消去しない。forEach内でのasync/awaitは使わずfor...ofを使う。_pushEntryの!currentRoleガードでスキップされていないか常に確認する。</div>
+            </div>
+            <div style="background:#f0fdf4;border-left:4px solid #22c55e;padding:12px 14px;border-radius:0 8px 8px 0;">
+              <div style="font-weight:800;color:#15803d;font-size:13px;margin-bottom:4px;">③ リアルタイム更新：全PCへタイムラグなく反映する</div>
+              <div style="font-size:12px;color:#14532d;line-height:1.6;">onSnapshot（shared_entries/shared_reports/config）は常に3本全部有効に保つ。エラーコールバックを必ず設定し、監視が切れた場合はsyncIndicatorを赤表示させる。デバウンスはentries=600ms/reports=300msを維持。監視を解除・再設定する際は古いハンドラを必ずunsubscribeしてからstartFirestoreSync()を呼ぶ。</div>
+            </div>
+          </div>
+          <div style="margin-top:14px;padding:10px 14px;background:#f8fafc;border-radius:8px;font-size:11px;color:var(--text-mute);font-family:&#39;JetBrains Mono&#39;,monospace;">
+            最終更新: v2.96 — 2026/06/10 | 担当: 吉田崇人（統括）
+          </div>
+        </div>
+
         <div class="table-card" style="padding:24px;margin-top:16px;background:linear-gradient(135deg, rgba(99,102,241,.04), rgba(139,92,246,.04));border-color:#c7d2fe;">
           <h3 style="margin-bottom:12px;">☁️ クラウド同期（Firebase）</h3>
           <p style="color:var(--text-dim);font-size:12px;margin-bottom:14px;line-height:1.7;">
@@ -8708,7 +8732,8 @@ async function _pushSeHoursToFirebase(year, month) {
     try {
       await window._fbSetDoc(
         window._fbDoc(firestoreDb, col+'_entries', (mId+'_'+date).replace(/-/g,'_')),
-        { memberId:mId, date, hours:h, updatedAt:window._fbServerTimestamp(), updatedBy:getInstanceId() }
+        { memberId:mId, date, hours:h, updatedAt:window._fbServerTimestamp(), updatedBy:getInstanceId() },
+        { merge: true }  // ← call/connect等の既存フィールドを消さない
       );
       pushed++;
     } catch(e) { console.warn('SE push:', key, e.message); }
@@ -13198,14 +13223,16 @@ function applyRolePermissions() {
       el.style.display = "none";
     });
   } else if (currentRole === "jimu") {
-    // 事務：管理系は非表示だが「日報入力」だけ表示
+    // 事務：管理系は非表示だが「日報入力」「Excel取込」だけ表示
     document.querySelectorAll('[data-page="members"], [data-page="admin"], [data-admin-only="true"]').forEach(el => {
       el.style.display = "none";
     });
-    // 日報入力ナビだけ戻す
+    // 日報入力ナビを戻す
     const dailyNav = document.querySelector('[data-page="daily-report-input"]');
     if (dailyNav) dailyNav.style.display = "";
-    // ダッシュボードの取込センターボタンは非表示のまま
+    // Excel取込ナビを戻す（GSheets取込・Excel手動取込が必要なため）
+    const importNav = document.querySelector('[data-page="daily-import"]');
+    if (importNav) importNav.style.display = "";
   }
 }
 
