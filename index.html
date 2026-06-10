@@ -12644,10 +12644,12 @@ async function importCallSheetExcel(file, year, month) {
       const ng        = parseFloat(values[17]) || 0;
       const action    = String(values[18] || "");
 
-      // 全指標が0かつアクションも空 → 本当に空の行なのでスキップ
-      const hasData = hoursFromGS || call || connect || irai_done || kaishuu ||
-                      mikomi_a || mikomi_b || mikomi_c || irai_kazu ||
-                      haru_ok || haru_ng || other_ok || other_ng || ng || action.trim();
+      // callデータ等が全て0かつアクションも空 → 空行なのでスキップ
+      // ※SEカバー月はhoursFromGS=0だが、callデータがあれば必ず取込む
+      const hasCallData = call || connect || irai_done || kaishuu ||
+                          mikomi_a || mikomi_b || mikomi_c || irai_kazu ||
+                          haru_ok || haru_ng || other_ok || other_ng || ng || action.trim();
+      const hasData = hoursFromGS || hasCallData;
       if (!hasData) continue;
 
       const dateStr = `${year}-${String(m2).padStart(2,"0")}-${String(d2).padStart(2,"0")}`;
@@ -14720,7 +14722,8 @@ async function _pushEntry(memberId, date) {
       window._fbDoc(firestoreDb, col + "_entries", docId),
       { memberId, date, ...entry,
         updatedAt: window._fbServerTimestamp(),
-        updatedBy: getInstanceId() }
+        updatedBy: getInstanceId() },
+      { merge: true }  // ← 既存フィールドを消さない
     );
     updateSyncIndicator(true);
     // showToastは大量書込時にうるさいので省略（importCallSheetExcel側でまとめてトーストする）
