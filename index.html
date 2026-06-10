@@ -14519,9 +14519,13 @@ async function startFirestoreSync() {
       const payload = JSON.parse(d.payload);
       // firebaseConfigはローカルを優先、pinはFirebaseを優先（全端末で同期）
       const keepConfig = state.firebaseConfig;
-      // "entries"はshared_entriesコレクションから復元するためconfigでは上書きしない
+      // entries: shared_entries優先だが、旧configにentriesがあれば後方互換として取り込む
       const keys = ["members","monthlyTarget","payrollRates","dailyReports","currentMonth","currentWeek","pin","announcements","teamOp"];
       keys.forEach(k => { if (payload[k] !== undefined) state[k] = payload[k]; });
+      // 旧config（v94以前）にentriesが含まれていれば取り込む（shared_entriesが空の場合の補完）
+      if (payload.entries && typeof payload.entries === 'object') {
+        Object.assign(state.entries, payload.entries);
+      }
       state.firebaseConfig = keepConfig; // configだけ上書き戻し（pinは戻さない）
       saveStateLocal();
       refreshActivePage();
@@ -14543,7 +14547,7 @@ async function startFirestoreSync() {
       if (change.type === "removed") return;
       const d = change.doc.data();
       if (!d || !d.memberId || !d.date) return;
-      if (d.updatedBy === getInstanceId()) return;
+      // entries は全デバイスで同一データなので updatedBy チェックをしない
       const key = d.memberId + "|" + d.date;
       const entry = Object.assign({}, d);
       delete entry.memberId; delete entry.date;
