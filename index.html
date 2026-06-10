@@ -12551,6 +12551,7 @@ async function importCallSheetExcel(file, year, month) {
   });
 
   let imported = 0;
+  const _entryPushPromises = []; // 全pushEntryを収集して後でawait
   let skipped = 0;
 
   wb.worksheets.forEach(ws => {
@@ -12635,17 +12636,27 @@ async function importCallSheetExcel(file, year, month) {
       if (!state.dailyReports[key]) state.dailyReports[key] = {};
       state.dailyReports[key].call    = call;
       state.dailyReports[key].connect = connect;
-      // 即時Firebase書込（デバウンスなし）
-      _pushEntry(curMemberId, dateStr).catch(e => console.warn('entry push:', e));
+      // 即時Firebase書込（配列収集）
+      _entryPushPromises.push(_pushEntry(curMemberId, dateStr).catch(e => console.warn('entry push:', e)));
       imported++;
     });
   });
 
-  await saveState();
-  // ★ SPREADSHEET_ENTRIESの稼働時間をFirestoreへ保存（ログアウト後も維持）
-  // await injectStaticEntries(); // v89: 不要
-  // ★ SE稼働時間をFirebaseに自動書込
-  try { if (typeof _pushSeHoursToFirebase === 'function') _pushSeHoursToFirebase(year, month).catch(console.warn); } catch(e) {}
+  // 全_pushEntryのFirebase書込を待機（最大15秒）
+  statusEl.innerHTML = `⏳ Firebase同期中（${_entryPushPromises.length}件）...`;
+  await Promise.race([
+    Promise.allSettled(_entryPushPromises),
+    new Promise(r => setTimeout(r, 15000))
+  ]);
+  console.log('[import] entries firebase sync完了:', _entryPushPromises.length, '件');
+  // SE稼働時間をFirebaseへ書込
+  try {
+    if (typeof _pushSeHoursToFirebase === 'function') {
+      await _pushSeHoursToFirebase(year, month);
+    }
+  } catch(e) { console.warn('SE push:', e); }
+  // configを保存（entries除く軽量版 → _pushConfigが自動でentries除外済み）
+  await _pushConfig();
   statusEl.innerHTML = `✅ 取込完了: ${imported}件のデータを反映しました`;
   showToast(`📋 コール管理表 ${month}月 取込完了（${imported}件）`);
   refreshActivePage();
@@ -14508,7 +14519,8 @@ async function startFirestoreSync() {
       const payload = JSON.parse(d.payload);
       // firebaseConfigはローカルを優先、pinはFirebaseを優先（全端末で同期）
       const keepConfig = state.firebaseConfig;
-      const keys = ["members","monthlyTarget","payrollRates","dailyReports","entries","currentMonth","currentWeek","pin","announcements","teamOp"];
+      // "entries"はshared_entriesコレクションから復元するためconfigでは上書きしない
+      const keys = ["members","monthlyTarget","payrollRates","dailyReports","currentMonth","currentWeek","pin","announcements","teamOp"];
       keys.forEach(k => { if (payload[k] !== undefined) state[k] = payload[k]; });
       state.firebaseConfig = keepConfig; // configだけ上書き戻し（pinは戻さない）
       saveStateLocal();
@@ -14620,7 +14632,8 @@ async function _pushConfig() {
   try {
     const col = state.firebaseConfig.collectionName || "shared";
     const payload = {};
-    ["members","monthlyTarget","payrollRates","dailyReports","entries","currentMonth","currentWeek","pin","announcements","teamOp"].forEach(k => {
+    // "entries"はshared_entriesコレクションで管理するためconfigに含めない（1MB上限対策）
+    ["members","monthlyTarget","payrollRates","dailyReports","currentMonth","currentWeek","pin","announcements","teamOp"].forEach(k => {
       payload[k] = state[k];
     });
     await window._fbSetDoc(window._fbDoc(firestoreDb, col, "config"), {
