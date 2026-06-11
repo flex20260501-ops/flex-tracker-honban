@@ -10700,7 +10700,8 @@ function renderMaekakuRanking() {
   html += '</tbody>';
   el.innerHTML = html;
   // 今日のランクを保存（翌日の変動計算用）
-  saveRankHistory(month, rows);
+  // month は renderMaekakuRanking スコープにないので currentMonth を使用
+  saveRankHistory(state.currentMonth, rows);
 }
 
 function renderPassRanking() {
