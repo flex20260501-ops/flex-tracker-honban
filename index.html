@@ -10502,7 +10502,7 @@ function renderRanking() {
     const a = aggregatePeriod(m.id, range.from, range.to);
     const seiyaku = a.seiyaku || 0;
     const dentou = a.seiyaku_dentou || a.dentou_plan || 0;
-    const meisai_irai = a.pass || 0;
+    const meisai_irai = a.irai_done || 0;  // F列「依頼済」= 明細依頼数
     const meisai_kaishuu = a.meisai_kaishuu || 0;
     const connectRate = a.call > 0 ? a.connect / a.call : 0;
 
