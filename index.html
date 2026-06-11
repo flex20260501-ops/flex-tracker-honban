@@ -13201,9 +13201,13 @@ async function importCallSheetExcel(file, year, month) {
         haru_ok, haru_ng, other_ok, other_ng, ng, action,
       };
       if (!state.dailyReports) state.dailyReports = {};
-      if (!state.dailyReports[key]) state.dailyReports[key] = {};
-      state.dailyReports[key].call    = call;
-      state.dailyReports[key].connect = connect;
+      // 全フィールドをdailyReportsに書く（aggregatePeriodはdailyReports優先のため）
+      state.dailyReports[key] = Object.assign(state.dailyReports[key] || {}, {
+        call, connect, irai_done, kaishuu,
+        mikomi_a, mikomi_b, mikomi_c, irai_kazu,
+        haru_ok, haru_ng, other_ok, other_ng, ng, action,
+        hours: hoursFromGS,
+      });
       imported++;
     }
   }
