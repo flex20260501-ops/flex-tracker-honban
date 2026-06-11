@@ -10628,6 +10628,7 @@ function renderRanking() {
         <td><div class="rank-badge">${i+1}</div></td>
         <td class="name-cell">
           ${memberNameWithAvatar(r.m)}
+          ${rankChangeBadge(getRankChange(rankFromMonth, r.m && r.m.id, i+1))}
           ${(()=>{
             if (!r.m.canMaekaku || !r.a.maekaku_close) return '';
             const rate = ((r.a.maekaku_ok||0) / (r.a.maekaku_close||1)) * 100;
