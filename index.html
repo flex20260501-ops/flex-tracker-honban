@@ -10423,9 +10423,20 @@ function aggregatePeriod(memberId, fromDate, toDate) {
     if (datesWithReport.has(date)) continue; // dailyReportsがある日は既に集計済み
     if (!entry.hours && !entry.call) continue; // 空エントリはスキップ
     const mgmtHb = getMgmtHours(memberId, date);
-    agg.hours   += mgmtHb > 0 ? mgmtHb : parseFloat(entry.hours || 0);
-    agg.call    += parseFloat(entry.call    || 0);
-    agg.connect += parseFloat(entry.connect || 0);
+    agg.hours      += mgmtHb > 0 ? mgmtHb : parseFloat(entry.hours || 0);
+    agg.call       += parseFloat(entry.call       || 0);
+    agg.connect    += parseFloat(entry.connect    || 0);
+    agg.irai_done  += parseFloat(entry.irai_done  || 0);
+    agg.kaishuu    = (agg.kaishuu    || 0) + parseFloat(entry.kaishuu    || 0);
+    agg.mikomi_a   = (agg.mikomi_a   || 0) + parseFloat(entry.mikomi_a   || 0);
+    agg.mikomi_b   = (agg.mikomi_b   || 0) + parseFloat(entry.mikomi_b   || 0);
+    agg.mikomi_c   = (agg.mikomi_c   || 0) + parseFloat(entry.mikomi_c   || 0);
+    agg.irai_kazu  = (agg.irai_kazu  || 0) + parseFloat(entry.irai_kazu  || 0);
+    agg.haru_ok    = (agg.haru_ok    || 0) + parseFloat(entry.haru_ok    || 0);
+    agg.haru_ng    = (agg.haru_ng    || 0) + parseFloat(entry.haru_ng    || 0);
+    agg.other_ok   = (agg.other_ok   || 0) + parseFloat(entry.other_ok   || 0);
+    agg.other_ng   = (agg.other_ng   || 0) + parseFloat(entry.other_ng   || 0);
+    agg.ng         = (agg.ng         || 0) + parseFloat(entry.ng         || 0);
     agg.days++;
   }
 
