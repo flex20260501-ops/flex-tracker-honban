@@ -15594,6 +15594,7 @@ async function renderBulletin() {
     list.innerHTML = posts.map(p => {
       const date = p.createdAt ? (p.createdAt.toDate ? p.createdAt.toDate().toLocaleDateString('ja-JP') : p.createdAt) : '';
       const imgHtml = p.image ? `<div style="margin-top:12px;"><img src="${p.image}" style="max-width:100%;max-height:400px;border-radius:8px;object-fit:contain;cursor:pointer;" onclick="this.style.maxHeight=this.style.maxHeight==='none'?'400px':'none'"></div>` : '';
+      const urlHtml = p.fileUrl ? `<div style="margin-top:12px;"><a href="${p.fileUrl}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;padding:8px 14px;background:var(--bg-elev);border:1px solid var(--border);border-radius:8px;color:var(--accent);font-size:13px;font-weight:600;text-decoration:none;">📄 添付ファイルを開く</a></div>` : '';
       const delBtn = currentRole === 'admin' ? `<button onclick="deleteBulletinPost('${p.id}')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:11px;padding:4px 8px;border-radius:4px;hover:background:#fee2e2;">削除</button>` : '';
       return `<div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:20px 24px;">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px;">
@@ -15605,6 +15606,7 @@ async function renderBulletin() {
         </div>
         <div style="font-size:13px;color:var(--text-dim);line-height:1.8;white-space:pre-wrap;">${p.body || ''}</div>
         ${imgHtml}
+        ${urlHtml}
       </div>`;
     }).join('');
   } catch(e) {
@@ -15621,10 +15623,15 @@ function openBulletinPostModal() {
       <div style="font-weight:800;font-size:18px;color:var(--text);margin-bottom:20px;">新規投稿</div>
       <input id="blt-title" placeholder="タイトル" style="width:100%;padding:10px 14px;background:var(--bg-elev);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;margin-bottom:12px;box-sizing:border-box;">
       <textarea id="blt-body" placeholder="本文" rows="6" style="width:100%;padding:10px 14px;background:var(--bg-elev);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;resize:vertical;margin-bottom:12px;box-sizing:border-box;"></textarea>
-      <div style="margin-bottom:16px;">
+      <div style="margin-bottom:12px;">
         <label style="font-size:12px;color:var(--text-mute);display:block;margin-bottom:6px;">画像添付（任意）</label>
         <input type="file" id="blt-image" accept="image/*" style="font-size:12px;color:var(--text-dim);">
         <div id="blt-preview" style="margin-top:8px;"></div>
+      </div>
+      <div style="margin-bottom:16px;">
+        <label style="font-size:12px;color:var(--text-mute);display:block;margin-bottom:6px;">📄 PDF / ファイルURL（任意）</label>
+        <input id="blt-url" placeholder="https://drive.google.com/..." style="width:100%;padding:10px 14px;background:var(--bg-elev);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;box-sizing:border-box;">
+        <div style="font-size:11px;color:var(--text-mute);margin-top:4px;">Google DriveのURLは「共有」→「リンクをコピー」で取得できます</div>
       </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;">
         <button onclick="document.getElementById('bulletin-modal').remove()" style="padding:10px 20px;background:var(--bg-elev);border:1px solid var(--border);border-radius:8px;color:var(--text);cursor:pointer;">キャンセル</button>
@@ -15674,12 +15681,14 @@ async function submitBulletinPost() {
     });
   }
 
+  const fileUrl = (document.getElementById('blt-url') ? document.getElementById('blt-url').value.trim() : '') || null;
   try {
     const col = state.firebaseConfig.collectionName || 'shared';
     const colRef = window._fbCollection(firestoreDb, col + '_bulletin');
     await window._fbAddDoc(colRef, {
       title, body,
       image: imageData || null,
+      fileUrl: fileUrl,
       author: '吉田',
       createdAt: window._fbServerTimestamp(),
     });
