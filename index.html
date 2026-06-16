@@ -12704,6 +12704,11 @@ function aggregateMonthFromReports(memberId, month) {
     if (mId !== memberId) continue;
     if (parseInt(date.split('-')[1]) !== month) continue;
 
+    // GSheets取込データは meisai_kaishuu でなく kaishuu フィールドに入っているため正規化
+    if (!rep.meisai_kaishuu && rep.kaishuu) {
+      rep.meisai_kaishuu = rep.kaishuu;
+    }
+
     // hours 以外の全フィールドを加算
     for (const k of Object.keys(agg)) {
       if (k === 'days' || k === 'hours') continue;
@@ -12713,14 +12718,10 @@ function aggregateMonthFromReports(memberId, month) {
     if (!rep.goukaku_cxl && rep.short)       agg.goukaku_cxl += parseFloat(rep.short || 0);
     if (!rep.dentou_cxl  && rep.short_dentou) agg.dentou_cxl  += parseFloat(rep.short_dentou || 0);
 
-    // call/connect/kaishuu: state.entries優先（GSheets取込データはentriesに正しい値がある）
+    // call/connect: state.entries優先（GSheets取込データはentriesに正しい値がある）
     const ent = getEntry(memberId, date);
     if (ent.call    > 0) { agg.call    = agg.call    - parseFloat(rep.call    || 0) + parseFloat(ent.call); }
     if (ent.connect > 0) { agg.connect = agg.connect - parseFloat(rep.connect || 0) + parseFloat(ent.connect); }
-    // meisai_kaishuu: GSheets取込は rep.kaishuu に入っているため補完
-    if (!rep.meisai_kaishuu && rep.kaishuu) {
-      agg.meisai_kaishuu = agg.meisai_kaishuu - parseFloat(rep.meisai_kaishuu || 0) + parseFloat(rep.kaishuu || 0);
-    }
 
     datesWithReport.add(date);
     agg.days++;
