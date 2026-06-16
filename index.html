@@ -13376,6 +13376,22 @@ async function importCallSheetExcel(file, year, month) {
     ]);
     console.log(`[importCallSheetExcel] Firebase push完了`);
   } catch(e) { console.warn('entry sync:', e); }
+  // dailyReportsもFirestoreにpush（再ログイン後も復元できるよう）
+  try {
+    const reportPromises = [];
+    for (const key of Object.keys(state.dailyReports || {})) {
+      const [mId, date] = key.split('|');
+      if (!mId || !date) continue;
+      if (!date.startsWith(ym)) continue;
+      reportPromises.push(_pushReport(mId, date).catch(e => console.warn('[importExcel] report push warn:', mId, date, e)));
+    }
+    console.log(`[importCallSheetExcel] dailyReports push開始: ${reportPromises.length}件`);
+    await Promise.race([
+      Promise.allSettled(reportPromises),
+      new Promise(r => setTimeout(r, 25000))
+    ]);
+    console.log(`[importCallSheetExcel] dailyReports push完了`);
+  } catch(e) { console.warn('report sync:', e); }
   // ★ _pushSeHoursToFirebaseはここで呼ばない（_pushEntryが全フィールド済みのため不要、呼ぶとhours上書きでcall消失する）
   try { await _pushConfig(); } catch(e) { console.warn('config push:', e); }
   statusEl.innerHTML = `✅ 取込完了: ${imported}件のデータを反映しました`;
@@ -15318,7 +15334,7 @@ async function startFirestoreSync() {
       if (change.type === "removed") return;
       const d = change.doc.data();
       if (!d || !d.memberId || !d.date) return;
-      if (d.updatedBy === getInstanceId()) return;
+      // updatedByチェックなし（shared_reportsは全デバイスで同一データのため）
       const key = d.memberId + "|" + d.date;
       const rep = Object.assign({}, d);
       delete rep.memberId; delete rep.date;
