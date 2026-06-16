@@ -9589,6 +9589,22 @@ function aggregateMonth(memberId, month) {
     agg.douryoku    = (agg.douryoku    || 0) + pf(rep.douryoku || 0);
     agg.pass        = (agg.pass        || 0) + pf(rep.pass || 0);
     agg.cxl         = (agg.cxl         || 0) + pf(rep.cxl || 0);
+    // dailyReportsにcall等が入っている場合も集計（GSheets取込データ）
+    if (pf(rep.call) > 0) {
+      agg.call      += pf(rep.call);
+      agg.connect   += pf(rep.connect);
+      agg.irai_done += pf(rep.irai_done);
+      agg.kaishuu   += pf(rep.kaishuu);
+      agg.mikomi_a  += pf(rep.mikomi_a);
+      agg.mikomi_b  += pf(rep.mikomi_b);
+      agg.mikomi_c  += pf(rep.mikomi_c);
+      agg.irai_kazu += pf(rep.irai_kazu);
+      agg.haru_ok   += pf(rep.haru_ok);
+      agg.haru_ng   += pf(rep.haru_ng);
+      agg.other_ok  += pf(rep.other_ok);
+      agg.other_ng  += pf(rep.other_ng);
+      agg.ng        += pf(rep.ng);
+    }
   }
   return agg;
 }
