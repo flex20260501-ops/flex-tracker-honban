@@ -9763,19 +9763,24 @@ function aggregateMonth(memberId, month) {
     }
   }
 
-  // ② state.entries から call/connect 等を加算（hoursはMGMT_MAPで補完済みの日はスキップ）
+  // ② state.entries から call/connect 等を加算
+  const datesFromEntries = new Set(); // entriesで集計した日付
   for (const [key, e] of Object.entries(state.entries || {})) {
     const [mId, date] = key.split('|');
     if (mId !== memberId) continue;
     if (parseInt(date.split('-')[1]) !== month) continue;
-    // SEにある月はstate.entries.hoursを無視（SEが正本）
-    // SEにない月（6月以降）はstate.entries.hoursを使用
     if (!counted.has(date)) {
       const seHForDate = getMgmtHours(memberId, date);
       if (seHForDate <= 0 && pf(e.hours) > 0) {
-        agg.hours += pf(e.hours);  // SE未収録日: GSheets hoursを使用
+        agg.hours += pf(e.hours);
       }
       counted.add(date);
+    }
+    // dailyReportsにも同じ日があればdailyReportsを優先（entries側はスキップ）
+    const repKey = memberId + '|' + date;
+    if (state.dailyReports && state.dailyReports[repKey] && pf((state.dailyReports[repKey]).call) > 0) {
+      datesFromEntries.add(date); // dailyReportsで処理する
+      continue;
     }
     agg.call      += pf(e.call);
     agg.connect   += pf(e.connect);
@@ -9798,7 +9803,6 @@ function aggregateMonth(memberId, month) {
     if (mId !== memberId) continue;
     if (parseInt(date.split('-')[1]) !== month) continue;
     if (!counted.has(date)) {
-      // SEが正本（getMgmtHours）、SEにない日はentries.hours（6月等）
       const _seH3 = getMgmtHours(memberId, date);
       const _entH3 = parseFloat((getEntry(memberId, date)||{}).hours || 0);
       agg.hours += _seH3 > 0 ? _seH3 : _entH3;
@@ -9812,8 +9816,10 @@ function aggregateMonth(memberId, month) {
     agg.douryoku    = (agg.douryoku    || 0) + pf(rep.douryoku || 0);
     agg.pass        = (agg.pass        || 0) + pf(rep.pass || 0);
     agg.cxl         = (agg.cxl         || 0) + pf(rep.cxl || 0);
-    // dailyReportsにcall等が入っている場合も集計（GSheets取込データ）
+    // GSheets取込データ（call/kaishuu等）はdailyReportsから加算（entriesとの重複を防ぐ）
     if (pf(rep.call) > 0) {
+      // rep.kaishuuをkaishuu列用に使用
+      if (!rep.meisai_kaishuu && rep.kaishuu) rep.meisai_kaishuu = rep.kaishuu;
       agg.call      += pf(rep.call);
       agg.connect   += pf(rep.connect);
       agg.irai_done += pf(rep.irai_done);
