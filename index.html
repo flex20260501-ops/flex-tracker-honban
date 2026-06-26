@@ -1750,41 +1750,6 @@
         </div>
       </div>
   
-    <!-- 平均使用量ページ -->
-    <div class="page" id="page-denryoku-avg">
-      <div class="page-header">
-        <div>
-          <div class="page-title">平均使用量</div>
-          <div class="page-sub">// 動力 季節指数ツール</div>
-        </div>
-      </div>
-      <div style="max-width:600px;margin:0 auto;">
-        <!-- 入力エリア -->
-        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:24px;margin-bottom:20px;">
-          <div style="font-weight:700;font-size:14px;color:var(--text);margin-bottom:16px;">📋 使用量入力</div>
-          <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;">
-            <div>
-              <label style="font-size:12px;color:var(--text-mute);display:block;margin-bottom:6px;">使用月</label>
-              <select id="avg-month" style="padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg-card);color:var(--text);cursor:pointer;" onchange="calcDenryokuAvg()">
-                <option value="">選択</option>
-                <option value="0">4月</option><option value="1">5月</option><option value="2">6月</option><option value="3">7月</option><option value="4">8月</option><option value="5">9月</option><option value="6">10月</option><option value="7">11月</option><option value="8">12月</option><option value="9">1月</option><option value="10">2月</option><option value="11">3月</option>
-              </select>
-            </div>
-            <div>
-              <label style="font-size:12px;color:var(--text-mute);display:block;margin-bottom:6px;">使用量（kWh）</label>
-              <input type="number" id="avg-usage" placeholder="例：550" min="0" style="padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg-card);color:var(--text);width:160px;" oninput="calcDenryokuAvg()" />
-            </div>
-            <button onclick="resetDenryokuAvg()" style="padding:10px 18px;background:var(--bg-elev);border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text-dim);cursor:pointer;">リセット</button>
-          </div>
-        </div>
-        <!-- 結果エリア -->
-        <div id="avg-result" style="display:none;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:24px;">
-          <div style="font-weight:700;font-size:14px;color:var(--text);margin-bottom:16px;">📊 推定使用量</div>
-          <div id="avg-table-wrap"></div>
-          <div id="avg-summary" style="margin-top:16px;padding:14px;background:var(--accent-soft);border:1px solid var(--accent);border-radius:8px;text-align:center;"></div>
-        </div>
-      </div>
-    </div>
 
     <!-- OPE研修：話し言葉変換一覧 -->
       <div id="ope-training-section" style="margin-bottom:32px;display:none;">
@@ -2001,7 +1966,43 @@
       <input type="text" id="qa-search" class="qa-search" placeholder="質問・キーワードで検索..." oninput="renderQA()">
       <div class="qa-filters" id="qa-filters"></div>
       <div id="qa-list"></div>
-    </div><!-- Archive (Past Months) -->
+    </div>
+    <!-- 平均使用量ページ -->
+    <div class="page" id="page-denryoku-avg">
+      <div class="page-header">
+        <div>
+          <div class="page-title">平均使用量</div>
+          <div class="page-sub">// 動力 季節指数ツール</div>
+        </div>
+      </div>
+      <div style="max-width:600px;margin:0 auto;">
+        <!-- 入力エリア -->
+        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:24px;margin-bottom:20px;">
+          <div style="font-weight:700;font-size:14px;color:var(--text);margin-bottom:16px;">📋 使用量入力</div>
+          <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;">
+            <div>
+              <label style="font-size:12px;color:var(--text-mute);display:block;margin-bottom:6px;">使用月</label>
+              <select id="avg-month" style="padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg-card);color:var(--text);cursor:pointer;" onchange="calcDenryokuAvg()">
+                <option value="">選択</option>
+                <option value="0">4月</option><option value="1">5月</option><option value="2">6月</option><option value="3">7月</option><option value="4">8月</option><option value="5">9月</option><option value="6">10月</option><option value="7">11月</option><option value="8">12月</option><option value="9">1月</option><option value="10">2月</option><option value="11">3月</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:12px;color:var(--text-mute);display:block;margin-bottom:6px;">使用量（kWh）</label>
+              <input type="number" id="avg-usage" placeholder="例：550" min="0" style="padding:10px 14px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg-card);color:var(--text);width:160px;" oninput="calcDenryokuAvg()" />
+            </div>
+            <button onclick="resetDenryokuAvg()" style="padding:10px 18px;background:var(--bg-elev);border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text-dim);cursor:pointer;">リセット</button>
+          </div>
+        </div>
+        <!-- 結果エリア -->
+        <div id="avg-result" style="display:none;background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:24px;">
+          <div style="font-weight:700;font-size:14px;color:var(--text);margin-bottom:16px;">📊 推定使用量</div>
+          <div id="avg-table-wrap"></div>
+          <div id="avg-summary" style="margin-top:16px;padding:14px;background:var(--accent-soft);border:1px solid var(--accent);border-radius:8px;text-align:center;"></div>
+        </div>
+      </div>
+    </div>
+<!-- Archive (Past Months) -->
     <div class="page" id="page-archive">
       <div class="page-header">
         <div>
