@@ -10765,8 +10765,8 @@ function aggregatePeriod(memberId, fromDate, toDate) {
 
   for (const k of Object.keys(agg)) { if (typeof agg[k] !== "number" || isNaN(agg[k])) agg[k] = 0; }
   // ★ 後確CXL・電灯CXLを実績からマイナス
-  agg.seiyaku        = Math.max(0, agg.seiyaku        - agg.goukaku_cxl);
-  agg.seiyaku_dentou = Math.max(0, agg.seiyaku_dentou - agg.dentou_cxl);
+  agg.seiyaku        = agg.seiyaku        - agg.goukaku_cxl;  // マイナス許容（先月成約→今月CXLに対応）
+  agg.seiyaku_dentou = agg.seiyaku_dentou - agg.dentou_cxl;
   // ★ douryoku / seiyaku_douryoku：seiyaku_douryokuが正本、なければdouryokuで補完
   if (agg.seiyaku_douryoku === 0 && agg.douryoku > 0) {
     agg.seiyaku_douryoku = agg.douryoku;
@@ -12851,8 +12851,8 @@ function aggregateMonthFromReports(memberId, month) {
   }
 
   for (const k of Object.keys(agg)) { if (typeof agg[k] !== 'number' || isNaN(agg[k])) agg[k] = 0; }
-  agg.seiyaku        = Math.max(0, agg.seiyaku        - agg.goukaku_cxl);
-  agg.seiyaku_dentou = Math.max(0, agg.seiyaku_dentou - agg.dentou_cxl);
+  agg.seiyaku        = agg.seiyaku        - agg.goukaku_cxl;  // マイナス許容（先月成約→今月CXLに対応）
+  agg.seiyaku_dentou = agg.seiyaku_dentou - agg.dentou_cxl;
   if (agg.seiyaku_douryoku === 0 && agg.douryoku > 0) agg.seiyaku_douryoku = agg.douryoku;
   agg.douryoku = 0;
   agg.callperhour = agg.hours > 0 ? agg.call / agg.hours : 0;
@@ -13729,9 +13729,21 @@ function generateMailText() {
     monGoukakuOK += pf(agg.goukaku_ok);
     monCXL       += pf(agg.goukaku_cxl);      // ★ 後確CXL（供給開始前CXL）
     monCXLDentou += pf(agg.dentou_cxl);        // ★ 電灯CXL
-    monDentou    += pf(agg.seiyaku_dentou);    // 実績成約電灯プラン（CXL除算済み）
-    monDouryoku  += pf(agg.seiyaku_douryoku);  // ★ seiyaku_douryokuを正本とする
-    monSeiyaku   += pf(agg.seiyaku);           // 成約社数（CXL除算済み）
+    // aggregatePeriodはMath.max(0,seiyaku-cxl)でクランプするため
+    // 先月成約→今月CXL(seiyaku=0,cxl>0)のケースで除算されない問題を回避。
+    // agg.seiyaku（クランプ済み）にcxlを足して元の値を復元し、改めてcxlを引く。
+    // これにより seiyaku=0, cxl=0.5 → net = 0+0.5-0.5=0 ではなく
+    // dailyReportsのraw seiyakuを直接参照する。
+    let _rawSeiyaku = 0, _rawDentou = 0;
+    for (const [_k, _rep] of Object.entries(state.dailyReports || {})) {
+      const [_mId, _d] = _k.split('|');
+      if (_mId !== m.id || _d < monFrom || _d > date) continue;
+      _rawSeiyaku += pf(_rep.seiyaku);
+      _rawDentou  += pf(_rep.seiyaku_dentou);
+    }
+    monSeiyaku   += Math.max(0, _rawSeiyaku - pf(agg.goukaku_cxl));
+    monDentou    += Math.max(0, _rawDentou  - pf(agg.dentou_cxl));
+    monDouryoku  += pf(agg.seiyaku_douryoku);
   });
 
   const monBooth    = monH/8;
@@ -13747,7 +13759,7 @@ function generateMailText() {
   const projB  = monH/8;
 
   const f  = (v,dec=2) => (isNaN(v)||!isFinite(v))?"—":v.toFixed(dec);
-  const fi = v => (!v||isNaN(v))?"0":Math.round(v).toString();
+  const fi = v => (v===null||v===undefined||isNaN(v))?"0":Math.round(v).toString();
   // ★ CXL発生率 = CXL社数÷（成約社数＋CXL社数）
   const cxlRate = (monSeiyaku+monCXL)>0?f(monCXL/(monSeiyaku+monCXL)*100,1):"0";
 
@@ -16402,6 +16414,8 @@ async function _boardApplyToNippo(dateStr) {
     state.dailyReports[repKey].dentou_plan      = vals.dentou_plan      || 0;
     state.dailyReports[repKey].seiyaku_dentou   = vals.seiyaku_dentou   || 0;
     state.dailyReports[repKey].seiyaku_douryoku = vals.seiyaku_douryoku || 0;
+    // CXL系は手入力値を保持（板管理では管理しないため上書きしない）
+    // goukaku_cxl, dentou_cxl は日報入力ページの手入力値をそのまま使う
     try { await _pushReport(memberId, dateStr); } catch(e) {}
   }
 
