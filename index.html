@@ -13478,7 +13478,11 @@ async function importCallSheetExcel(file, year, month) {
     let inData = false;
 
     for (const { values } of rows) {
-      const col0 = String(values[0] || "").trim();
+      // richText対応（Googleスプレッドシート由来のセルはrichText形式になる場合がある）
+      const _v0 = values[0];
+      const col0 = (_v0 && typeof _v0 === 'object' && _v0.richText)
+        ? _v0.richText.map(r => r.text).join('')
+        : String(_v0 || '').trim();
 
       // ■メンバー行
       if (col0.startsWith("■")) {
