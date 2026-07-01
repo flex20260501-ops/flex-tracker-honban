@@ -13741,8 +13741,8 @@ function generateMailText() {
       _rawSeiyaku += pf(_rep.seiyaku);
       _rawDentou  += pf(_rep.seiyaku_dentou);
     }
-    monSeiyaku   += Math.max(0, _rawSeiyaku - pf(agg.goukaku_cxl));
-    monDentou    += Math.max(0, _rawDentou  - pf(agg.dentou_cxl));
+    monSeiyaku   += _rawSeiyaku - pf(agg.goukaku_cxl);  // マイナス許容
+    monDentou    += _rawDentou  - pf(agg.dentou_cxl);   // マイナス許容
     monDouryoku  += pf(agg.seiyaku_douryoku);
   });
 
