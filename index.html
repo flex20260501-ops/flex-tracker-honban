@@ -10726,11 +10726,11 @@ function aggregatePeriod(memberId, fromDate, toDate) {
       if (k === "days") continue;
       agg[k] += parseFloat(rep[k] || 0);
     }
-    // ★ hours はSPREADSHEET_ENTRIES正本、call/connectはentries優先
+    // ★ hours はSPREADSHEET_ENTRIES正本。dailyReports.hoursを使用し、
+    //   getMgmtHoursがあればそちらで上書き。entry.hoursによる上書きは廃止（二重計上の原因）
     const entry = getEntry(memberId, date);
     const _mh = getMgmtHours(memberId, date);
     if (_mh > 0) { agg.hours = agg.hours - parseFloat(rep.hours || 0) + _mh; }
-    else if (entry.hours > 0) { agg.hours = agg.hours - parseFloat(rep.hours || 0) + parseFloat(entry.hours); }
     if (entry.call    > 0) { agg.call    = agg.call    - parseFloat(rep.call    || 0) + parseFloat(entry.call); }
     if (entry.connect > 0) { agg.connect = agg.connect - parseFloat(rep.connect || 0) + parseFloat(entry.connect); }
     datesWithReport.add(date);
