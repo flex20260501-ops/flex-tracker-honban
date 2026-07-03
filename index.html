@@ -12827,11 +12827,7 @@ function aggregateMonthFromReports(memberId, month) {
         agg.meisai_kaishuu += parseFloat(ent.kaishuu || 0);
         agg.days++;
       }
-      // bd4[date]が0（SEに日付なし）でもentries.hoursがあれば使用（6月等）
-      if (!bd4[date] && !datesWithReport.has(date)) {
-        const ent = getEntry(memberId, date);
-        if (ent && ent.hours > 0) agg.hours += parseFloat(ent.hours);
-      }
+      // bd4[date]が0（SEに日付なし）の場合はhours加算なし（dailyReportsが正本）
     }
   }
 
@@ -12842,12 +12838,7 @@ function aggregateMonthFromReports(memberId, month) {
     if (parseInt(date.split('-')[1]) !== month) continue;
     // datesWithReportにある日はLoop1で集計済み（二重加算しない）
     // if (datesWithReport.has(date)) { agg.meisai_kaishuu += ... } // 削除
-    // SEにない日付でentries.hoursがあれば加算（6月等SE未収録月）
-    const seH = getMgmtHours(memberId, date);
-    if (seH <= 0 && parseFloat(entry.hours || 0) > 0) {
-      agg.hours += parseFloat(entry.hours);
-      if (!datesWithReport.has(date)) agg.days++;
-    }
+    // entry.hours による加算は廃止（dailyReports/SPREADSHEET_ENTRIESが正本）
   }
 
   for (const k of Object.keys(agg)) { if (typeof agg[k] !== 'number' || isNaN(agg[k])) agg[k] = 0; }
