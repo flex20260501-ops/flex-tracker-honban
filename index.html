@@ -9780,7 +9780,8 @@ function aggregateMonth(memberId, month) {
     hours:0, call:0, connect:0, irai_done:0, kaishuu:0,
     mikomi_a:0, mikomi_b:0, mikomi_c:0, irai_kazu:0,
     haru_ok:0, haru_ng:0, other_ok:0, other_ng:0, ng:0,
-    score:0, days:0, seiyaku:0, seiyaku_dentou:0, dentou_plan:0, pass:0, maekaku_ok:0
+    score:0, days:0, seiyaku:0, seiyaku_dentou:0, dentou_plan:0, pass:0, maekaku_ok:0,
+    goukaku_ok:0, maekaku_close:0, goukaku_cxl:0, dentou_cxl:0, seiyaku_douryoku:0
   };
   const pf = v => parseFloat(v) || 0;
   const counted = new Set(); // 処理済み日付
@@ -9850,14 +9851,18 @@ function aggregateMonth(memberId, month) {
       agg.hours += _seH3 > 0 ? _seH3 : _entH3;
       counted.add(date);
     }
-    agg.maekaku_ok  = (agg.maekaku_ok  || 0) + pf(rep.maekaku_ok);
-    agg.goukaku_ok  = (agg.goukaku_ok  || 0) + pf(rep.goukaku_ok);
-    agg.seiyaku     = (agg.seiyaku     || 0) + pf(rep.seiyaku);
-    agg.dentou_plan = (agg.dentou_plan || 0) + pf(rep.dentou_plan || rep.seiyaku_dentou || 0);
+    agg.maekaku_ok     = (agg.maekaku_ok     || 0) + pf(rep.maekaku_ok);
+    agg.goukaku_ok     = (agg.goukaku_ok     || 0) + pf(rep.goukaku_ok);
+    agg.seiyaku        = (agg.seiyaku        || 0) + pf(rep.seiyaku);
+    agg.dentou_plan    = (agg.dentou_plan    || 0) + pf(rep.dentou_plan || rep.seiyaku_dentou || 0);
     agg.seiyaku_dentou = (agg.seiyaku_dentou || 0) + pf(rep.seiyaku_dentou || rep.dentou_plan || 0);
-    agg.douryoku    = (agg.douryoku    || 0) + pf(rep.douryoku || 0);
-    agg.pass        = (agg.pass        || 0) + pf(rep.pass || 0);
-    agg.cxl         = (agg.cxl         || 0) + pf(rep.cxl || 0);
+    agg.seiyaku_douryoku = (agg.seiyaku_douryoku || 0) + pf(rep.seiyaku_douryoku || 0);
+    agg.douryoku       = (agg.douryoku       || 0) + pf(rep.douryoku || 0);
+    agg.pass           = (agg.pass           || 0) + pf(rep.pass || 0);
+    agg.cxl            = (agg.cxl            || 0) + pf(rep.cxl || 0);
+    agg.goukaku_cxl    = (agg.goukaku_cxl    || 0) + pf(rep.goukaku_cxl || rep.short || 0);
+    agg.dentou_cxl     = (agg.dentou_cxl     || 0) + pf(rep.dentou_cxl  || rep.short_dentou || 0);
+    agg.maekaku_close  = (agg.maekaku_close  || 0) + pf(rep.maekaku_close || 0);
     // GSheets取込データ（call/kaishuu等）はdailyReportsから加算（entriesとの重複を防ぐ）
     if (pf(rep.call) > 0) {
       // rep.kaishuuをkaishuu列用に使用
