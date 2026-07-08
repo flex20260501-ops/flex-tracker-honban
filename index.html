@@ -13713,18 +13713,15 @@ function generateMailText() {
 
   const monFrom = `${y}-${String(mo).padStart(2,"0")}-01`;
   members.forEach(m => {
-    const agg = aggregatePeriod(m.id, monFrom, date);
+    // aggregateMonthを使用（SEカバー月の稼働時間も正確に集計される）
+    const agg = aggregateMonth(m.id, mo);
     monH         += pf(agg.hours);
     monPass      += pf(agg.pass);
     monMaekakuOK += pf(agg.maekaku_ok);
     monGoukakuOK += pf(agg.goukaku_ok);
-    monCXL       += pf(agg.goukaku_cxl);      // ★ 後確CXL（供給開始前CXL）
-    monCXLDentou += pf(agg.dentou_cxl);        // ★ 電灯CXL
-    // aggregatePeriodはMath.max(0,seiyaku-cxl)でクランプするため
-    // 先月成約→今月CXL(seiyaku=0,cxl>0)のケースで除算されない問題を回避。
-    // agg.seiyaku（クランプ済み）にcxlを足して元の値を復元し、改めてcxlを引く。
-    // これにより seiyaku=0, cxl=0.5 → net = 0+0.5-0.5=0 ではなく
-    // dailyReportsのraw seiyakuを直接参照する。
+    monCXL       += pf(agg.goukaku_cxl);
+    monCXLDentou += pf(agg.dentou_cxl);
+    // dailyReportsのraw値からCXLを直接除算（先月成約→今月CXL対応）
     let _rawSeiyaku = 0, _rawDentou = 0;
     for (const [_k, _rep] of Object.entries(state.dailyReports || {})) {
       const [_mId, _d] = _k.split('|');
