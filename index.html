@@ -2590,6 +2590,7 @@
             <div class="la-filter-group"><label>亜種</label><select id="la-filter-variant"><option value="">すべて</option></select></div>
             <input class="la-search" id="la-search-input" placeholder="リスト名で検索...">
             <button class="ghost" id="la-clear-filter-btn">条件クリア</button>
+            <button class="ghost" id="la-uncheck-all-btn">レ点を一括解除</button>
           </div>
         </div>
         <div class="table-scroll la-table-scroll">
@@ -10829,6 +10830,7 @@ function renderNewcomerRanking() {
   });
   html += "</tbody>";
   el.innerHTML = html;
+  laAttachSortableTable('newcomer-ranking-table', {skipCols:[0]});
 }
 
 let rankMode = "monthly"; // "monthly" | "daily"
@@ -11161,6 +11163,7 @@ function renderRanking() {
 
   html += "</tbody>";
   document.getElementById("full-ranking-table").innerHTML = html;
+  laAttachSortableTable('full-ranking-table', {skipCols:[0,10]});
   renderNewcomerRanking();
   renderPassRanking();
   renderMaekakuRanking();
@@ -11225,6 +11228,7 @@ function renderMaekakuRanking() {
 
   html += '</tbody>';
   el.innerHTML = html;
+  laAttachSortableTable('maekaku-ranking-table', {skipCols:[0]});
   // 今日のランクを保存（翌日の変動計算用）
   // month は renderMaekakuRanking スコープにないので currentMonth を使用
   saveRankHistory(state.currentMonth, rows);
@@ -11282,6 +11286,7 @@ function renderPassRanking() {
   });
   html += "</tbody>";
   el.innerHTML = html;
+  laAttachSortableTable('pass-ranking-table', {skipCols:[0]});
 }
 
 // Wrapper for member radar with period support (compatible with old signature)
@@ -15660,6 +15665,7 @@ function renderPeriodCumulative() {
   }
   html += "</tbody>";
   document.getElementById("period-table").innerHTML = html;
+  laAttachSortableTable('period-table', {skipCols:[0]});
 }
 
 
@@ -17706,6 +17712,58 @@ function laRerenderAll(){
   laRenderPredict();
 }
 
+// ─────────────────────────────────────────────────────────
+//  汎用テーブルソート（ランキング／期間指定累計など既存ページにも流用）
+//  レンダリング後の<table>を対象に、<th>クリックで<tbody>内の<tr>を
+//  DOM上で並べ替えるだけなので、既存の集計・描画ロジックには一切触れない。
+// ─────────────────────────────────────────────────────────
+function laAttachSortableTable(tableId, opts){
+  opts = opts || {};
+  const skipCols = opts.skipCols || [];
+  const table = document.getElementById(tableId);
+  if(!table) return;
+  const thead = table.querySelector('thead');
+  const tbody = table.querySelector('tbody');
+  if(!thead || !tbody) return;
+  const headerRow = thead.querySelector('tr');
+  if(!headerRow) return;
+
+  [...headerRow.children].forEach((th, idx)=>{
+    if(skipCols.includes(idx)) return;
+    th.style.cursor = 'pointer';
+    th.addEventListener('click', ()=>{
+      const rows = [...tbody.querySelectorAll('tr')];
+      if(rows.length===0) return;
+      const dir = th.dataset.laDir === 'asc' ? 'desc' : 'asc';
+      [...headerRow.children].forEach(h=>{
+        delete h.dataset.laDir;
+        const a = h.querySelector('.la-sort-arrow'); if(a) a.remove();
+      });
+      th.dataset.laDir = dir;
+      const arrow = document.createElement('span');
+      arrow.className = 'la-sort-arrow';
+      arrow.style.cssText = 'margin-left:4px;font-size:9px;opacity:.75;';
+      arrow.textContent = dir === 'asc' ? '▲' : '▼';
+      th.appendChild(arrow);
+
+      const parseNum = (txt)=>{
+        const cleaned = txt.replace(/,/g,'');
+        const m = cleaned.match(/-?\d+(\.\d+)?/);
+        return m ? parseFloat(m[0]) : null;
+      };
+      rows.sort((ra, rb)=>{
+        const ca = ra.children[idx], cb = rb.children[idx];
+        const ta = ca ? ca.textContent.trim() : '';
+        const tb = cb ? cb.textContent.trim() : '';
+        const na = parseNum(ta), nb = parseNum(tb);
+        if(na!==null && nb!==null && na!==nb) return dir==='asc' ? na-nb : nb-na;
+        return dir==='asc' ? ta.localeCompare(tb,'ja') : tb.localeCompare(ta,'ja');
+      });
+      rows.forEach(r=>tbody.appendChild(r));
+    });
+  });
+}
+
 function laParseCSV(text){
   if(text.charCodeAt(0)===0xFEFF) text = text.slice(1);
   const rows = [];
@@ -17778,6 +17836,14 @@ function laInitEvents(){
     document.getElementById('la-filter-variant').value='';
     document.getElementById('la-search-input').value='';
     laRenderTableBody();
+  });
+  document.getElementById('la-uncheck-all-btn').addEventListener('click', ()=>{
+    laSelectedIds.clear();
+    const headCb = document.getElementById('la-check-all');
+    if(headCb) headCb.checked = false;
+    laRenderTableBody();
+    laRenderPredict();
+    laRenderKPI();
   });
   document.getElementById('la-chart-category').addEventListener('change', laRenderChart);
   document.getElementById('la-chart-area').addEventListener('change', laRenderChart);
