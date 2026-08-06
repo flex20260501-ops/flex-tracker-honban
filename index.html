@@ -1445,6 +1445,18 @@
   #page-list-analysis .la-predict-empty{grid-column:1/-1; color:var(--text-mute); text-align:center; padding:40px 0; font-size:12px;}
   #page-list-analysis .la-selected-summary{font-size:11px; color:var(--text-dim); margin-bottom:12px; line-height:1.8;}
   #page-list-analysis .la-selected-summary b{color:var(--text);}
+  #page-list-analysis .la-predict-breakdown{margin-top:18px; padding-top:16px; border-top:1px solid var(--border);}
+  #page-list-analysis .la-predict-breakdown-title{font-size:11.5px; font-weight:700; color:var(--text-dim); margin-bottom:8px;}
+  #page-list-analysis .la-bd-table{width:100%; border-collapse:collapse; font-size:11px;}
+  #page-list-analysis .la-bd-table th{text-align:right; font-size:10px; color:var(--text-mute); font-weight:700; padding:6px 8px; border-bottom:1px solid var(--border); text-transform:uppercase; letter-spacing:.05em;}
+  #page-list-analysis .la-bd-table th:first-child, #page-list-analysis .la-bd-table th:nth-child(2){text-align:left;}
+  #page-list-analysis .la-bd-table td{text-align:right; padding:6px 8px; border-bottom:1px solid var(--grid); color:var(--text);}
+  #page-list-analysis .la-bd-table td:first-child, #page-list-analysis .la-bd-table td:nth-child(2){text-align:left;}
+  #page-list-analysis .la-bd-src{display:inline-block; padding:2px 7px; border-radius:5px; font-size:9.5px; font-weight:700;}
+  #page-list-analysis .la-bd-src.actual{background:var(--success-soft); color:var(--success);}
+  #page-list-analysis .la-bd-src.est-same{background:var(--accent-soft); color:var(--accent-dim);}
+  #page-list-analysis .la-bd-src.est-fallback{background:var(--warning-soft); color:#8a5a12;}
+  #page-list-analysis .la-bd-src.est-none{background:var(--danger-soft); color:var(--danger);}
   #page-list-analysis .la-note-box{font-size:10.5px; color:var(--text-dim); line-height:1.9; background:var(--bg-elev); border-radius:8px; padding:14px 16px;}
   #page-list-analysis .la-note-box b{color:var(--text);}
   @media (max-width:1100px){
@@ -2657,6 +2669,7 @@
               <div class="la-predict-empty">リストを選択し、稼働時間と1時間あたり架電本数を入力してください</div>
             </div>
           </div>
+          <div id="la-predict-breakdown"></div>
         </div>
       </div>
 
@@ -17675,33 +17688,91 @@ function laRenderChart(){
   wrap.innerHTML = legendHtml + svg;
 }
 
+// 架電実績のない（または極端に少ない）リストのレート推定。
+// 優先順位: ①同エリア×同業種(category) ②同業種(全エリア) ③同エリア(全業種) ④全体平均
+// ※「業種」は laParseListName の category（亜種・G/携帯/旧/IV等の接尾辞は除いたベース業種）で判定。
+const LA_NODATA_THRESHOLD = 30; // 架電数がこれ未満は「実績が薄い」とみなし推定を併用
+function laHistoricalRate(category, area, excludeId){
+  const pool = laData.filter(d=> d.id!==excludeId && d.called>0);
+  const levels = [
+    {key:'same',   list: pool.filter(d=>d.category===category && d.area===area)},
+    {key:'category', list: pool.filter(d=>d.category===category)},
+    {key:'area',   list: pool.filter(d=>d.area===area)},
+    {key:'overall', list: pool},
+  ];
+  for(const lv of levels){
+    if(lv.list.length===0) continue;
+    const sumCalled = lv.list.reduce((s,d)=>s+d.called,0);
+    if(sumCalled<=0) continue;
+    const sumConnect = lv.list.reduce((s,d)=>s+d.connect,0);
+    const sumJuchu = lv.list.reduce((s,d)=>s+d.juchu,0);
+    const sumMeisaiIrai = lv.list.reduce((s,d)=>s+d.meisaiIrai,0);
+    const sumHaru = lv.list.reduce((s,d)=>s+d.haruene,0);
+    return {
+      level: lv.key, n: lv.list.length, sampleCalled: sumCalled,
+      juchuRate: sumJuchu/sumCalled, connectRate: sumConnect/sumCalled,
+      meisaiIraiRate: sumMeisaiIrai/sumCalled, haruRate: sumHaru/sumCalled,
+    };
+  }
+  return {level:'none', n:0, sampleCalled:0, juchuRate:0, connectRate:0, meisaiIraiRate:0, haruRate:0};
+}
+function laSourceBadge(level){
+  if(level==='none') return '<span class="la-bd-src est-none">実績データなし</span>';
+  if(level==='same') return '<span class="la-bd-src est-same">推定(同エリア×同業種)</span>';
+  return `<span class="la-bd-src est-fallback">推定(${level==='category'?'同業種全エリア':level==='area'?'同エリア全業種':'全体平均'})</span>`;
+}
+
 function laRenderPredict(){
   const container = document.getElementById('la-predict-results');
+  const breakdown = document.getElementById('la-predict-breakdown');
   const summary = document.getElementById('la-selected-summary');
   const selected = laData.map(laDeriveMetrics).filter(d=>laSelectedIds.has(d.id));
   if(selected.length===0){
     summary.textContent = 'リストを選択してください';
     container.innerHTML = '<div class="la-predict-empty">リストを選択し、稼働時間と1時間あたり架電本数を入力してください</div>';
+    breakdown.innerHTML = '';
     return;
   }
-  const sumTotal = selected.reduce((s,d)=>s+d.total,0);
-  const sumCalled = selected.reduce((s,d)=>s+d.called,0);
-  const sumUncalled = selected.reduce((s,d)=>s+d.uncalled,0);
-  const sumConnect = selected.reduce((s,d)=>s+d.connect,0);
-  const sumJuchu = selected.reduce((s,d)=>s+d.juchu,0);
-  const sumHaru = selected.reduce((s,d)=>s+d.haruene,0);
-  const sumMeisaiIrai = selected.reduce((s,d)=>s+d.meisaiIrai,0);
 
-  const blendedJuchuRate = sumCalled>0 ? sumJuchu/sumCalled : 0;
-  const blendedConnectRate = sumCalled>0 ? sumConnect/sumCalled : 0;
-  const blendedHaruRate = sumCalled>0 ? sumHaru/sumCalled : 0;
-  const blendedMeisaiIraiRate = sumCalled>0 ? sumMeisaiIrai/sumCalled : 0;
+  // リスト単位で「実績を使うか／同エリア同業種の過去実績から推定するか」を判定
+  const enriched = selected.map(d=>{
+    const useEstimate = d.called < LA_NODATA_THRESHOLD;
+    const hist = useEstimate ? laHistoricalRate(d.category, d.area, d.id) : null;
+    const rate = useEstimate
+      ? {juchuRate:hist.juchuRate, connectRate:hist.connectRate, meisaiIraiRate:hist.meisaiIraiRate, haruRate:hist.haruRate}
+      : {juchuRate:d.juchuRate, connectRate:d.connectRate, meisaiIraiRate:d.meisaiIraiRate, haruRate:d.haruRate};
+    return Object.assign({}, d, {useEstimate, histLevel: hist?hist.level:'actual', histN: hist?hist.n:null, histSampleCalled: hist?hist.sampleCalled:null, rate});
+  });
 
-  summary.innerHTML = `選択中 <b>${selected.length}件</b>のリスト／保有合計 <b>${laFmtInt(sumTotal)}</b>件／未架電残数 <b>${laFmtInt(sumUncalled)}</b>件<br>
-    過去実績ベース: 獲得率 <b>${laFmtPct(blendedJuchuRate)}</b>／コネクト率 <b>${laFmtPct(blendedConnectRate)}</b>／明細依頼率 <b>${laFmtPct(blendedMeisaiIraiRate)}</b>／ハルエネ遭遇率(対架電) <b>${laFmtPct(blendedHaruRate)}</b>`;
+  const sumTotal = enriched.reduce((s,d)=>s+d.total,0);
+  const sumCalled = enriched.reduce((s,d)=>s+d.called,0);
+  const sumUncalled = enriched.reduce((s,d)=>s+d.uncalled,0);
+
+  summary.innerHTML = `選択中 <b>${enriched.length}件</b>のリスト／保有合計 <b>${laFmtInt(sumTotal)}</b>件／架電済 <b>${laFmtInt(sumCalled)}</b>件／未架電残数 <b>${laFmtInt(sumUncalled)}</b>件<br>
+    うち実績薄／未着手（架電${LA_NODATA_THRESHOLD}件未満）で <b style="color:var(--accent-dim);">${enriched.filter(d=>d.useEstimate).length}件</b> は同エリア×同業種の過去実績から効率を推定して予測に反映しています。`;
 
   const H = parseFloat(document.getElementById('la-input-hours').value);
   const perHour = parseFloat(document.getElementById('la-input-calls-per-hour').value);
+
+  // 内訳テーブル（推定ソースの透明化）は稼働時間未入力でも常に表示
+  const bdRows = enriched.map(d=>`
+    <tr>
+      <td>${d.name}</td>
+      <td>${d.category} / ${d.area}</td>
+      <td>${d.useEstimate ? laSourceBadge(d.histLevel) : '<span class="la-bd-src actual">自リスト実績</span>'}</td>
+      <td>${laFmtInt(d.called)}</td>
+      <td>${laFmtInt(d.uncalled)}</td>
+      <td>${laFmtPct(d.rate.juchuRate)}</td>
+      <td>${laFmtPct(d.rate.connectRate)}</td>
+      <td>${laFmtPct(d.rate.haruRate)}</td>
+      <td>${d.useEstimate ? (d.histN>0 ? `参照${d.histN}リスト(計${laFmtInt(d.histSampleCalled)}件)` : '参照データなし') : '-'}</td>
+    </tr>`).join('');
+  breakdown.innerHTML = `
+    <div class="la-predict-breakdown-title">予測に使用したレートの内訳（リストごと）</div>
+    <table class="la-bd-table">
+      <thead><tr><th>リスト名</th><th>業種/エリア</th><th>レート出所</th><th>架電済</th><th>未架電残</th><th>獲得率</th><th>コネクト率</th><th>ハルエネ遭遇率</th><th>参照件数</th></tr></thead>
+      <tbody>${bdRows}</tbody>
+    </table>`;
 
   if(!H || !perHour || H<=0 || perHour<=0){
     container.innerHTML = '<div class="la-predict-empty">稼働時間と1時間あたり架電本数を入力してください</div>';
@@ -17712,10 +17783,15 @@ function laRenderPredict(){
   let capped = false;
   if(plannedCalls > sumUncalled){ plannedCalls = sumUncalled; capped = true; }
 
-  const predJuchu = plannedCalls*blendedJuchuRate;
-  const predConnect = plannedCalls*blendedConnectRate;
-  const predHaru = plannedCalls*blendedHaruRate;
-  const predMeisaiIrai = plannedCalls*blendedMeisaiIraiRate;
+  // 選択リストの未架電残数の比率で架電予定数を按分し、リストごとの実績/推定レートを適用
+  let predJuchu=0, predConnect=0, predHaru=0, predMeisaiIrai=0;
+  enriched.forEach(d=>{
+    const share = sumUncalled>0 ? plannedCalls*(d.uncalled/sumUncalled) : 0;
+    predJuchu += share*d.rate.juchuRate;
+    predConnect += share*d.rate.connectRate;
+    predHaru += share*d.rate.haruRate;
+    predMeisaiIrai += share*d.rate.meisaiIraiRate;
+  });
   const perHourJuchu = H>0 ? predJuchu/H : 0;
 
   container.innerHTML = `
